@@ -1,6 +1,5 @@
 import axios from "axios";
 import api from "./api";
-import n8n from "./n8n";
 
 export const getNotaPorIdOuProtocolo = async (idNota) => {
   try {
@@ -48,16 +47,9 @@ export const getNotaPorIDIntegracao = async (id_integracao) => {
   }
 };
 
-export const sincronizarNotas = async (notasArray) => {
-  const payload = Array.isArray(notasArray)
-    ? { notas: notasArray }
-    : notasArray && typeof notasArray === "object"
-      ? notasArray
-      : { notas: [] };
-
-  if (!payload.origem) payload.origem = "portal_nacional";
-
-  const response = await n8n.post("webhook/sincronizar-nf/", payload);
+// Consulta as notas na Focus (via backend) e atualiza o status no banco.
+export const sincronizarNotas = async (refs) => {
+  const response = await api.post("/api/nfse/sincronizar/", { refs });
   return response.data;
 };
 

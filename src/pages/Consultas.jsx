@@ -745,6 +745,8 @@ function buildNotasPayloadFromTela({ tipoBusca, faturas, dados }) {
         notas.push({
           id_tecnospeed: getIdTecnospeed(n),
           id_integracao: getIdIntegracao(n),
+          status: n?.status,
+          situacao_prefeitura: n?.situacao_prefeitura,
           protocolo: n?.protocolo,
           numero: n?.numero_nfse || n?.numero || n?.id,
           fatura: n?.fatura || fat?.numero || fat?.id,
@@ -761,6 +763,8 @@ function buildNotasPayloadFromTela({ tipoBusca, faturas, dados }) {
   const notas = toArray(dados).map((n) => ({
     id_tecnospeed: getIdTecnospeed(n),
     id_integracao: getIdIntegracao(n),
+    status: n?.status,
+    situacao_prefeitura: n?.situacao_prefeitura,
     protocolo: n?.protocolo,
     numero: n?.numero_nfse || n?.numero || n?.id,
     fatura: n?.fatura || n?.faturamento,
@@ -1394,22 +1398,29 @@ export default function Consultas() {
     try {
       const payload = buildNotasPayloadFromTela({ tipoBusca, faturas, dados });
 
-      if (!payload?.notas?.length) {
+      // Canceladas já são finais; o backend ainda descarta as autorizadas/não enviadas
+      const refs = [
+        ...new Set(
+          toArray(payload?.notas)
+            .filter((n) => n.id_integracao && !isNotaCancelada(n))
+            .map((n) => String(n.id_integracao)),
+        ),
+      ];
+
+      if (!refs.length) {
         enqueueSnackbar("Nenhuma nota encontrada para sincronizar.", {
           variant: "info",
         });
         return;
       }
 
-      const res = await sincronizarNotas({
-        ...payload,
-        origem: "portal_nacional",
-      });
+      const res = await sincronizarNotas(refs);
 
-      const msg = res?.message || res?.mensagem || "Sincronização solicitada.";
-      enqueueSnackbar(msg, { variant: "success" });
+      const msg = res?.message || "Sincronização concluída.";
+      enqueueSnackbar(msg, { variant: res?.falhas ? "warning" : "success" });
 
-      await realizarBusca();
+      // Só recarrega a tela se algo mudou no banco
+      if (res?.atualizadas > 0) await realizarBusca();
     } catch (e) {
       console.error("Erro ao sincronizar:", e);
       enqueueSnackbar(getFriendlyApiErrorMessage(e), { variant: "error" });
