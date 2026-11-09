@@ -1,11 +1,16 @@
 # Estágio 1: Build
-FROM node:18-alpine AS build-stage
+FROM node:22-alpine AS build-stage
 
 WORKDIR /app
 
 # Copia arquivos de dependências
 COPY package*.json ./
-RUN npm install
+RUN npm ci
+
+# Variáveis de build do Vite (embutidas no bundle). Vazio = mesma origem.
+ARG VITE_API_BASE_URL=""
+ARG VITE_N8N_URL=""
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL VITE_N8N_URL=$VITE_N8N_URL
 
 # Copia o restante do código e gera o build
 COPY . .

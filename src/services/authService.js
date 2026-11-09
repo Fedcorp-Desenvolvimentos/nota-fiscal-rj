@@ -1,7 +1,7 @@
 import api from './api';
+import { renovarAccessToken } from './tokenRefresh';
 
 const TOKEN_KEY = "accessToken";
-const REFRESH_KEY = "refreshToken";
 
 export const authService = {
     async login(credentials) {
@@ -11,12 +11,8 @@ export const authService = {
     },
 
     async refreshToken() {
-        const refresh = localStorage.getItem(REFRESH_KEY);
-        if (!refresh) throw new Error("No refresh token available");
-        
-        // Rota: /api/auth/token/refresh/
-        const response = await api.post('/api/auth/token/refresh/', { refresh });
-        return response.data; // Retorna novo { access: '...' }
+        // Rota: /api/auth/token/refresh/ (axios puro, sem interceptors; ver tokenRefresh.js)
+        return renovarAccessToken();
     },
 
     async verifyToken(token) {

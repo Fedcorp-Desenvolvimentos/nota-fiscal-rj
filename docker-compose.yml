@@ -1,7 +1,10 @@
 services:
   frontend:
-    build: .
+    build:
+      context: .
+      # Variáveis do Vite são lidas no BUILD (não em runtime). Vazio = mesma origem.
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_N8N_URL: ${VITE_N8N_URL:-}
     ports:
       - "3000:80"
-    environment:
-      - VITE_API_URL=http://localhost:8000 # Exemplo para o Vite

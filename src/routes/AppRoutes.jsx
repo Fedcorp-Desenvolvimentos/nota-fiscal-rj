@@ -6,7 +6,8 @@ import Home from "../pages/Home";
 import Fatura from "../pages/emissao/Fatura";
 import FaturaPlanilha from "../pages/emissao/FaturaPlanilha";
 import Individual from "../pages/emissao/Individual";
-import Excel from "../pages/emissao/Excel";
+// import XLSX descontinuado; nova importação será projetada
+// import Excel from "../pages/emissao/Excel";
 import Consultas from "../pages/Consultas";
 import Historico from "../pages/Historico";
 
@@ -44,7 +45,8 @@ export const AppRoutes = () => {
         <Route path="/emitir/fatura" element={<Fatura />} />
         <Route path="/emitir/fatura-planilha" element={<FaturaPlanilha />} />
         <Route path="/emitir/individual" element={<Individual />} />
-        <Route path="/emitir/excel" element={<Excel />} />
+        {/* import XLSX descontinuado; nova importação será projetada */}
+        {/* <Route path="/emitir/excel" element={<Excel />} /> */}
         
         {/* Outras rotas */}
         <Route path="/consultas" element={<Consultas />} />

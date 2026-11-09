@@ -26,11 +26,7 @@ export default function Emitir() {
           <p>Emissão individual</p>
         </div>
 
-        <div className="opcao-card" onClick={() => navigate("/emitir/excel")}>
-          <span className="opcao-icon">📊</span>
-          <h3>Excel</h3>
-          <p>Importação de planilha</p>
-        </div>
+        {/* import XLSX descontinuado; nova importação será projetada (card Excel ocultado) */}
       </div>
     </div>
   );

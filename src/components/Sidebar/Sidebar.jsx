@@ -87,9 +87,7 @@ function Sidebar({ isOpen, onClose }) {
               <Link to="/emitir/fatura-planilha" className={isActive("/emitir/fatura-planilha")} onClick={handleLinkClick}>
                 Fatura + Descrição
               </Link>
-              <Link to="/emitir/excel" className={isActive("/emitir/excel")} onClick={handleLinkClick}>
-                Excel
-              </Link>
+              {/* import XLSX descontinuado; nova importação será projetada (rota /api/nfse/import/xlsx/ removida do backend em 09/11/2026) */}
               {["adm", "dev"].includes(nivelAcesso) && (
                 <>
                   <Link to="/emitir/individual" className={isActive("/emitir/individual")} onClick={handleLinkClick}>

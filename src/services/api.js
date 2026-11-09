@@ -1,8 +1,10 @@
 import axios from "axios";
+import { renovarAccessToken } from "./tokenRefresh";
 
+// Vazio = mesma origem (front e API em https://notas.fedcorp.com.br, caminhos já começam com /api/).
+// Em dev, defina VITE_API_BASE_URL=http://localhost:8000 no .env local.
 const api = axios.create({
-    baseURL: "https://fedcorp-nfs-e-django-ebh2e.ondigitalocean.app",
-    //baseURL: "http://localhost:8000"
+    baseURL: import.meta.env.VITE_API_BASE_URL ?? "",
 });
 
 // No seu arquivo api.js ou authService.js
@@ -20,12 +22,15 @@ api.interceptors.response.use(
         const originalRequest = error.config;
 
         // Se o erro for 401 e não for uma tentativa de login ou refresh
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        const url = originalRequest?.url ?? "";
+        const rotaDeAuth = url.includes("/api/auth/token/") || url.includes("/api/users/login/");
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !rotaDeAuth) {
             originalRequest._retry = true;
 
             try {
-                const { access } = await authService.refreshToken();
+                const { access, refresh } = await renovarAccessToken();
                 localStorage.setItem("accessToken", access);
+                if (refresh) localStorage.setItem("refreshToken", refresh);
 
                 // Refaz a requisição original com o novo token
                 originalRequest.headers.Authorization = `Bearer ${access}`;
