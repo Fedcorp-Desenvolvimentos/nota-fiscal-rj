@@ -53,6 +53,29 @@ Não precisa reiniciar o Caddy: ele serve os arquivos direto do diretório.
 O `Dockerfile` (node:22-alpine + nginx) e o `docker-compose.yml` recebem `VITE_API_BASE_URL`
 e `VITE_N8N_URL` como **build args**. O deploy oficial é o rsync acima.
 
+## Página Configuração (modelos de emissão)
+
+Rota `/configuracao` (sub-abas `prestadores`, `modelos`, `modelos/:id`, `regras`, `auditoria`) para gerenciar os
+modelos de emissão de NFS-e sem deploy: prestadores, versões de modelo (clonar → editar → dry-run → ativar), regras de
+resolução (com simulação) e auditoria. Consome `/api/nfse/config/` (contrato em
+`NFS-e-Django/.claude/docs/api-config-v1.md`; endpoints centralizados em `src/services/config.js`).
+
+- **Acesso decidido pelo backend**: no login (e ao reabrir a sessão) o front chama `GET /api/nfse/config/me/`; o item
+  "Configuração" do menu e as rotas `/configuracao/*` só aparecem se `admin_config` for `true` (senão redireciona
+  para `/`). Qualquer falha nessa chamada = sem acesso.
+- **Variável do backend** `NFSE_CONFIG_ADMINS`: e-mails separados por vírgula que podem usar a página; vazia = só
+  superusuários do Django. A comparação é **exata, com diferença de caixa**: o e-mail precisa ser idêntico ao do
+  cadastro do usuário (`Fulano@...` ≠ `fulano@...`); confira a grafia no banco antes de preencher. Definir no `.env` do Django **antes** de publicar o front; depois de
+  alterar, o usuário precisa sair e entrar de novo para o menu aparecer.
+- Requer o backend da `rework` com `nfse/config/` publicado; sem ele a chamada `me/` falha e a página fica oculta
+  (nenhuma outra tela é afetada).
+- Toda escrita pede **motivo** (≥ 5 caracteres) e entra na auditoria; mudanças valem para a fila em até 60 s.
+- Travas confirmáveis: campos fiscais de prestador (não versionado; vale na hora), ativar versão sem regra ativa e
+  desativar a única versão ativa abrem um modal com a mensagem do backend e "Confirmar mesmo assim" (`confirmar: true`).
+  Regra inválida na ativação não aceita confirmação: corrigir as regras do clone. Após ativar, a tela mostra o resumo
+  (versões desativadas, diff de regras e quantas das últimas 200 notas mudariam de modelo).
+- O token da Focus nunca trafega: a tela mostra só o **nome** da variável (`token_env`) e se ela existe no servidor.
+
 ## Pendências para decisão do dono
 
 ### Telas que chamam rotas inexistentes no backend atual

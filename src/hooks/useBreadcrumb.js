@@ -26,6 +26,11 @@ export function useBreadcrumb() {
     '/emitir/individual': 'Individual',
     '/consultas': 'Consultas',
     '/historico': 'Histórico',
+    '/configuracao': 'Configuração',
+    '/configuracao/prestadores': 'Prestadores',
+    '/configuracao/modelos': 'Modelos',
+    '/configuracao/regras': 'Regras',
+    '/configuracao/auditoria': 'Auditoria',
   };
 
   const formatSegment = (segment) => {

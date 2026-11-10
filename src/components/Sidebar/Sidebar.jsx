@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { FiChevronDown, FiFileText, FiSearch, FiClock, FiHome, FiX } from "react-icons/fi";
+import { FiChevronDown, FiFileText, FiSearch, FiClock, FiHome, FiX, FiSettings } from "react-icons/fi";
 import { BiDoorOpen } from "react-icons/bi";
 import { useAuth } from "../../context/AuthContext";
 import "../../styles/sidebar.css";
@@ -11,7 +11,7 @@ function Sidebar({ isOpen, onClose }) {
   const [openEmissao, setOpenEmissao] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
-  const { user, logout } = useAuth();
+  const { user, logout, adminConfig } = useAuth();
   const nivelAcesso = user?.tipo;
 
   useEffect(() => {
@@ -110,6 +110,17 @@ function Sidebar({ isOpen, onClose }) {
         {["adm", "dev"].includes(nivelAcesso) && (
           <Link to="/historico" className={isActive("/historico")} onClick={handleLinkClick}>
             <FiClock className="icon" /> Histórico
+          </Link>
+        )}
+
+        {/* Configuração dos modelos de emissão (só admin de configuração, decidido pelo backend) */}
+        {adminConfig && (
+          <Link
+            to="/configuracao"
+            className={location.pathname.startsWith("/configuracao") ? "active" : ""}
+            onClick={handleLinkClick}
+          >
+            <FiSettings className="icon" /> Configuração
           </Link>
         )}
 

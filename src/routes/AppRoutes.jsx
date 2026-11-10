@@ -10,6 +10,13 @@ import Individual from "../pages/emissao/Individual";
 // import Excel from "../pages/emissao/Excel";
 import Consultas from "../pages/Consultas";
 import Historico from "../pages/Historico";
+import AdminConfigRoute from "./AdminConfigRoute";
+import Configuracao from "../pages/configuracao/Configuracao";
+import Prestadores from "../pages/configuracao/Prestadores";
+import Modelos from "../pages/configuracao/Modelos";
+import ModeloDetalhe from "../pages/configuracao/ModeloDetalhe";
+import Regras from "../pages/configuracao/Regras";
+import Auditoria from "../pages/configuracao/Auditoria";
 
 // Layout principal (com Sidebar e Breadcrumb)
 import MainLayout from "../layouts/MainLayout";
@@ -51,6 +58,23 @@ export const AppRoutes = () => {
         {/* Outras rotas */}
         <Route path="/consultas" element={<Consultas />} />
         <Route path="/historico" element={<Historico />} />
+
+        {/* Configuração dos modelos de emissão (só admin de configuração; decidido pelo backend) */}
+        <Route
+          path="/configuracao"
+          element={
+            <AdminConfigRoute>
+              <Configuracao />
+            </AdminConfigRoute>
+          }
+        >
+          <Route index element={<Navigate to="prestadores" replace />} />
+          <Route path="prestadores" element={<Prestadores />} />
+          <Route path="modelos" element={<Modelos />} />
+          <Route path="modelos/:id" element={<ModeloDetalhe />} />
+          <Route path="regras" element={<Regras />} />
+          <Route path="auditoria" element={<Auditoria />} />
+        </Route>
       </Route>
 
       {/* Rota 404 - captura tudo que não foi encontrado */}

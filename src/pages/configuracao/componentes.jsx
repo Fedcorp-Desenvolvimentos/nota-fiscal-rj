@@ -1,0 +1,225 @@
+// Componentes compartilhados da página Configuração.
+import { useEffect, useMemo, useState } from "react";
+import { FiX, FiAlertTriangle } from "react-icons/fi";
+import { diffObjetos, jsonOrdenado, valorCurto } from "./utils";
+
+/** Modal simples (overlay + painel). `largo` para conteúdos extensos. */
+export function Modal({ titulo, aberto, onFechar, children, rodape, largo = false }) {
+  useEffect(() => {
+    if (!aberto) return undefined;
+    const esc = (e) => e.key === "Escape" && onFechar?.();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [aberto, onFechar]);
+
+  if (!aberto) return null;
+  return (
+    <div className="cfg-overlay" onMouseDown={(e) => e.target === e.currentTarget && onFechar?.()}>
+      <div className={`cfg-modal ${largo ? "cfg-modal-largo" : ""}`} role="dialog" aria-modal="true">
+        <div className="cfg-modal-header">
+          <h3>{titulo}</h3>
+          <button type="button" className="cfg-icon-btn" onClick={onFechar} aria-label="Fechar">
+            <FiX size={20} />
+          </button>
+        </div>
+        <div className="cfg-modal-body">{children}</div>
+        {rodape && <div className="cfg-modal-footer">{rodape}</div>}
+      </div>
+    </div>
+  );
+}
+
+/** Campo de formulário com rótulo, ajuda e erro do backend. */
+export function Campo({ label, erro, ajuda, children, obrigatorio = false }) {
+  return (
+    <div className={`cfg-campo ${erro ? "cfg-campo-erro" : ""}`}>
+      {label && (
+        <label>
+          {label}
+          {obrigatorio && <span className="cfg-obrigatorio"> *</span>}
+        </label>
+      )}
+      {children}
+      {ajuda && !erro && <small className="cfg-ajuda">{ajuda}</small>}
+      {erro && <small className="cfg-erro-msg">{erro}</small>}
+    </div>
+  );
+}
+
+/** Campo "motivo" obrigatório em toda escrita (vai para a auditoria). */
+export function CampoMotivo({ valor, onChange, erro, placeholder }) {
+  return (
+    <Campo label="Motivo da alteração" obrigatorio erro={erro} ajuda="Registrado na auditoria.">
+      <textarea
+        className="cfg-input"
+        rows={2}
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder || "Ex.: ajuste solicitado pelo fiscal em 10/11"}
+      />
+    </Campo>
+  );
+}
+
+export function Badge({ children, cor = "neutro", title }) {
+  return (
+    <span className={`cfg-badge cfg-badge-${cor}`} title={title}>
+      {children}
+    </span>
+  );
+}
+
+export function Indicador({ ok, textoOk = "configurado", textoNao = "ausente" }) {
+  return (
+    <span className={`cfg-indicador ${ok ? "ok" : "nao"}`} title={ok ? textoOk : textoNao}>
+      <span className="cfg-bolinha" />
+      {ok ? textoOk : textoNao}
+    </span>
+  );
+}
+
+/** Estado vazio / carregando / erro. */
+export function Estado({ carregando, erro, vazio, textoVazio = "Nada para exibir.", children }) {
+  if (carregando) return <div className="cfg-estado">Carregando…</div>;
+  if (erro)
+    return (
+      <div className="cfg-estado cfg-estado-erro">
+        <FiAlertTriangle /> {erro}
+      </div>
+    );
+  if (vazio) return <div className="cfg-estado">{textoVazio}</div>;
+  return children;
+}
+
+/** Bloco JSON somente leitura. */
+export function JsonView({ valor, altura }) {
+  const texto = useMemo(() => {
+    if (valor === undefined) return "—";
+    try {
+      return jsonOrdenado(valor);
+    } catch {
+      return String(valor);
+    }
+  }, [valor]);
+  return (
+    <pre className="cfg-json" style={altura ? { maxHeight: altura } : undefined}>
+      {texto}
+    </pre>
+  );
+}
+
+/**
+ * Editor JSON com validação: mantém o texto local e só chama onChange(objeto) quando o JSON é válido
+ * e é um objeto. onValidez(bool) avisa o pai para bloquear o salvar.
+ */
+export function JsonEditor({ valor, onChange, onValidez, desabilitado, linhas = 10 }) {
+  const [texto, setTexto] = useState(() => JSON.stringify(valor ?? {}, null, 2));
+  const [erro, setErro] = useState("");
+
+  // Ressincroniza quando o valor externo muda (ex.: troca de versão), sem sobrescrever edição inválida.
+  const externo = JSON.stringify(valor ?? {});
+  useEffect(() => {
+    setTexto((atual) => {
+      try {
+        if (JSON.stringify(JSON.parse(atual)) === externo) return atual;
+      } catch {
+        /* texto atual inválido: substitui pelo valor externo */
+      }
+      return JSON.stringify(JSON.parse(externo), null, 2);
+    });
+    setErro("");
+  }, [externo]);
+
+  const alterar = (t) => {
+    setTexto(t);
+    try {
+      const obj = JSON.parse(t || "{}");
+      if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw new Error("Deve ser um objeto JSON {…}.");
+      setErro("");
+      onValidez?.(true);
+      onChange?.(obj);
+    } catch (e) {
+      setErro(e.message || "JSON inválido.");
+      onValidez?.(false);
+    }
+  };
+
+  return (
+    <div>
+      <textarea
+        className={`cfg-input cfg-mono ${erro ? "cfg-input-erro" : ""}`}
+        rows={linhas}
+        value={texto}
+        disabled={desabilitado}
+        spellCheck={false}
+        onChange={(e) => alterar(e.target.value)}
+      />
+      {erro && <small className="cfg-erro-msg">JSON inválido: {erro}</small>}
+    </div>
+  );
+}
+
+/**
+ * Diff lado a lado. Recebe dois objetos (a = versão ativa, b = rascunho) ou linhas já prontas.
+ */
+export function DiffLadoALado({ a, b, linhas, rotuloA = "Versão ativa", rotuloB = "Rascunho", soDiferencas: inicial = true }) {
+  const [soDiferencas, setSoDiferencas] = useState(inicial);
+  const todas = useMemo(() => linhas || diffObjetos(a, b), [a, b, linhas]);
+  const exibidas = soDiferencas ? todas.filter((l) => l.tipo !== "igual") : todas;
+  const qtdDif = todas.filter((l) => l.tipo !== "igual").length;
+
+  return (
+    <div className="cfg-diff">
+      <div className="cfg-diff-topo">
+        <span>
+          {qtdDif === 0 ? "Nenhuma diferença." : `${qtdDif} chave(s) diferente(s).`}
+        </span>
+        <label className="cfg-check">
+          <input type="checkbox" checked={soDiferencas} onChange={(e) => setSoDiferencas(e.target.checked)} />
+          Só diferenças
+        </label>
+      </div>
+      <div className="cfg-tabela-wrap">
+        <table className="cfg-tabela cfg-tabela-diff">
+          <thead>
+            <tr>
+              <th>Chave</th>
+              <th>{rotuloA}</th>
+              <th>{rotuloB}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {exibidas.map((l) => (
+              <tr key={l.chave} className={`cfg-diff-${l.tipo}`}>
+                <td className="cfg-mono">{l.chave}</td>
+                <td className="cfg-mono">{valorCurto(l.a)}</td>
+                <td className="cfg-mono">{valorCurto(l.b)}</td>
+              </tr>
+            ))}
+            {exibidas.length === 0 && (
+              <tr>
+                <td colSpan={3} className="cfg-centro">
+                  Sem diferenças.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/** Lista de detalhes [[chave, mensagem]] vinda de erro.campos (ex.: regras inválidas, campos fiscais afetados). */
+export function ListaDetalhes({ itens }) {
+  if (!itens?.length) return null;
+  return (
+    <ul className="cfg-lista-detalhes">
+      {itens.map(([chave, msg]) => (
+        <li key={chave}>
+          <strong className="cfg-mono">{chave}</strong>: {msg}
+        </li>
+      ))}
+    </ul>
+  );
+}

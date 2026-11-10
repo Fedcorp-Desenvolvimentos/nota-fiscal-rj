@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { authService } from "../services/authService";
+import { configService } from "../services/config";
 import Loading from "../components/Loading/Loading";
 
 const AuthContext = createContext(null);
@@ -25,6 +26,18 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [loading, setLoading] = useState(true);
+    // Permissão da página Configuração (modelos de emissão), decidida pelo backend.
+    const [adminConfig, setAdminConfig] = useState(false);
+
+    // Consulta GET /api/nfse/config/me/ uma vez por sessão; qualquer falha = sem acesso.
+    const carregarAdminConfig = useCallback(async () => {
+        try {
+            const me = await configService.me();
+            setAdminConfig(me?.admin_config === true);
+        } catch {
+            setAdminConfig(false);
+        }
+    }, []);
 
     // Função central para limpar credenciais e redirecionar
 const logout = useCallback(() => {
@@ -32,6 +45,7 @@ const logout = useCallback(() => {
         localStorage.removeItem(REFRESH_KEY);
         setUser(null);
         setIsAuthenticated(false);
+        setAdminConfig(false);
         setLoading(false);
         // O redirecionamento será feito automaticamente pelo ProtectedRoute
         // ao detectar que isAuthenticated é false.
@@ -41,6 +55,7 @@ const logout = useCallback(() => {
     const hydrateUser = useCallback(async () => {
         try {
             const userData = await authService.getMe();
+            await carregarAdminConfig();
             setUser(userData);
             setIsAuthenticated(true);
         } catch (error) {
@@ -49,7 +64,7 @@ const logout = useCallback(() => {
         } finally {
             setLoading(false);
         }
-    }, [logout]);
+    }, [logout, carregarAdminConfig]);
 
     const login = useCallback(async (credentials) => {
         setLoading(true);
@@ -62,6 +77,7 @@ const logout = useCallback(() => {
 
             // Após login, buscamos os dados do perfil (me)
             const userData = await authService.getMe();
+            await carregarAdminConfig();
             setUser(userData);
             setIsAuthenticated(true);
 
@@ -73,7 +89,7 @@ const logout = useCallback(() => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [carregarAdminConfig]);
 
     // Efeito de inicialização: Verifica se o usuário já está logado ao abrir o app
     useEffect(() => {
@@ -112,8 +128,10 @@ const logout = useCallback(() => {
             loading,
             login,
             logout,
+            adminConfig,
+            recarregarAdminConfig: carregarAdminConfig,
         }),
-        [user, isAuthenticated, loading, login, logout]
+        [user, isAuthenticated, loading, login, logout, adminConfig, carregarAdminConfig]
     );
 
     if (loading) {
