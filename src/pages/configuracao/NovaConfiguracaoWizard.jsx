@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
-import { FiArrowLeft, FiArrowRight, FiCheckCircle, FiPlay, FiSave, FiAlertTriangle } from "react-icons/fi";
+import { FiArrowLeft, FiArrowRight, FiCheckCircle, FiPlay, FiSave } from "react-icons/fi";
 import { configService } from "../../services/config";
 import { Badge, Campo, CampoMotivo, ErrosBackend, Estado } from "./componentes";
 import DryRunPainel from "./DryRunPainel";
@@ -134,11 +134,6 @@ export default function NovaConfiguracaoWizard() {
     ...(empresa?.semMapeamento ? [{ valor: "padrao", rotulo: "Padrão da empresa" }] : []),
   ];
 
-  // Padrão da empresa vem antes da faixa de apólices (ex.: CONDOMED SP, regra 40 por CNPJ): apólice nunca seria alcançada.
-  const prioridadePadrao = Number(empresa?.padrao?.regra?.prioridade);
-  const padraoAntesDasApolices =
-    tipo === "apolice" && empresa && !empresa.semMapeamento && Number.isFinite(prioridadePadrao) && prioridadePadrao < 100;
-
   const valorEnviado = tipo === "apolice" ? normalizarApolice(valor) : tipo === "tipo_nfe" ? valor || CANAIS[0].valor : null;
   const chaveFicha = empresa ? chaveCondicao(tipo, valorEnviado) : null;
 
@@ -200,7 +195,6 @@ export default function NovaConfiguracaoWizard() {
 
   const conhecidosCriar = ["motivo", "base_modelo_id", "codigo_sugerido", "prestador_id", ...(tipo !== "padrao" ? ["condicao"] : [])];
   const duplicada = codigoErro(erroCriar) === "condicao_duplicada" || erroCriar?.response?.status === 409;
-  const recusaApolice = erroCriar?.response?.status === 400 && tipo === "apolice" && !!erroCriar?.response?.data?.erro?.campos?.condicao;
 
   // ---- passo 3: simular ----
   const simular = async () => {
@@ -274,12 +268,6 @@ export default function NovaConfiguracaoWizard() {
                     <Link to={`/configuracao/mapa/${empresa?.id}/${encodeURIComponent(chaveFicha)}`}>Abrir a ficha existente</Link>
                   </div>
                 )}
-                {recusaApolice && (
-                  <div style={{ marginTop: 4 }}>
-                    Se a mensagem fala da regra padrão vir antes da faixa de apólices (caso da CONDOMED SP, regra 40 por CNPJ): por
-                    decisão fiscal pendente, essa empresa só tem o padrão. Ajuste os parâmetros na ficha “Padrão” dela.
-                  </div>
-                )}
               </ErrosBackend>
 
               <div className="cfg-grid">
@@ -343,18 +331,6 @@ export default function NovaConfiguracaoWizard() {
                       <span>
                         Cria o padrão da empresa por CNPJ (faixa 450–499). Hoje ela cai no modelo padrão geral (fallback
                         {empresa?.padrao?.modelo ? ` ${rotuloVersao(empresa.padrao.modelo)}` : ""}).
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {padraoAntesDasApolices && (
-                  <div className="cfg-grid-largo">
-                    <div className="cfg-aviso cfg-aviso-alerta">
-                      <FiAlertTriangle />
-                      <span>
-                        A regra padrão desta empresa tem prioridade {prioridadePadrao}, antes da faixa de apólices (100–449): uma
-                        regra de apólice nunca seria alcançada e o servidor recusa. Por decisão fiscal pendente (ex.: CONDOMED SP,
-                        regra 40), essa empresa só tem o padrão.
                       </span>
                     </div>
                   </div>

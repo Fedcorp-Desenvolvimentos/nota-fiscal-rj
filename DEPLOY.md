@@ -98,13 +98,17 @@ Todo erro aparece no passo (alerta com a mensagem do backend, o código HTTP/`co
 |---|---|---|
 | 400 `motivo_obrigatorio` | motivo vazio ou < 5 caracteres | preencher o motivo |
 | 400 `validacao` em `prestador_id` | empresa INATIVA | ativar a empresa na aba Prestadores |
-| 400 `validacao` em `condicao` | apólice vazia/> 30 caracteres; canal diferente de `vr`/`externo`; **empresa cujo padrão vem antes da faixa de apólices (CONDOMED SP, regra 40 por CNPJ)** | corrigir o valor; no caso da CONDOMED SP, por decisão fiscal pendente (R84) a empresa só tem o padrão: ajustar os parâmetros na ficha "Padrão" |
+| 400 `validacao` em `condicao` | apólice vazia/> 30 caracteres; canal diferente de `vr`/`externo` | corrigir o valor (a mensagem do backend aparece no passo) |
 | 400 `validacao` em `base_modelo_id` | base inexistente, restrita a outra empresa ou empresa sem padrão nem FALLBACK | escolher outra base no combo (o combo já filtra as compatíveis) |
 | 400 `validacao` em `codigo_sugerido` | código fora do formato `LETRA-NÚMERO` ou já usado | deixar vazio (próximo livre) ou escolher outro |
 | 400 `validacao` (outros campos, ex.: `provedor`, `prioridade`) | base de outro provedor (`full_clean`), faixa de prioridade cheia | trocar a base; faixa cheia = falar com o time técnico (Avançado → Regras) |
 | 401 / 403 | sessão expirada / usuário fora de `NFSE_CONFIG_ADMINS` | entrar de novo / pedir acesso |
 | 404 `nao_encontrado` | empresa inexistente (mapa desatualizado) | recarregar o mapa |
 | 409 `condicao_duplicada` | já existe regra (ativa ou não, de qualquer versão) para essa empresa e condição | usar o link "Abrir a ficha existente" e editar o rascunho de lá (ou clonar a versão ativa) |
+
+Decisão do dono (10/11/2026): regra Empresa + Apólice sempre vence a regra só por CNPJ da empresa, para todas as
+empresas. A recusa antiga de apólice para a CONDOMED SP (padrão na regra 40) fica obsoleta com a migração 0043 do
+backend, que move esse padrão para a faixa 450–499; publicar o front junto ou depois do backend com a 0043.
 
 Nada é gravado em nenhum desses casos (transação única); sucesso grava auditoria `criar` do modelo e da regra.
 
