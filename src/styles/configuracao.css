@@ -322,3 +322,33 @@
 .cfg-mapa-linha-ro { color: #64748b; }
 .cfg-mapa-transversais { margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 2px; }
 .cfg-mapa-transversais-titulo { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; padding: 4px 6px; }
+
+/* Mapa: botão "+" no cabeçalho de cada empresa (fora do colapso) e botão global */
+.cfg-mapa-empresa-linha { display: flex; align-items: center; gap: 2px; }
+.cfg-mapa-empresa-linha .cfg-mapa-empresa-cab { flex: 1; min-width: 0; }
+.cfg-mapa-empresa-nova { flex: none; }
+.cfg-mapa-empresa-nova:disabled { opacity: 0.4; cursor: not-allowed; }
+.cfg-mapa-nova-global { width: 100%; justify-content: center; margin-bottom: 8px; }
+
+/* Ficha: seletor de versões + ações */
+.cfg-ficha-versoes { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 12px 0 4px; }
+.cfg-ficha-versoes .cfg-campo { min-width: 220px; margin-bottom: 0; }
+
+/* Wizard "Nova configuração" */
+.cfg-wizard-passos { display: flex; gap: 8px; list-style: none; padding: 0; margin: 4px 0 16px; flex-wrap: wrap; }
+.cfg-wizard-passos li {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+  border: 1px solid #e2e8f0; color: #64748b; font-size: 13px; background: #f8fafc;
+}
+.cfg-wizard-passos li.atual { border-color: var(--color-primary, #1d40a8); color: var(--color-primary, #1d40a8); background: #eef2ff; font-weight: 600; }
+.cfg-wizard-passos li.feito { border-color: #86efac; color: #166534; background: #f0fdf4; }
+.cfg-wizard-num {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
+  border: 1px solid currentColor; font-size: 11px;
+}
+.cfg-wizard-rodape { justify-content: flex-end; margin-top: 16px; border-top: 1px solid #e5e7eb; padding-top: 12px; }
+.cfg-wizard-dryrun { margin-top: 16px; box-shadow: none; }
+.cfg-wizard-resumo th { width: 140px; text-align: left; color: #64748b; font-weight: 500; }
+
+/* Campo que difere do modelo base (wizard, passo 2) */
+.cfg-campo-diferente { background: #fffbeb; outline: 2px solid #fde68a; border-radius: 6px; padding: 4px; }

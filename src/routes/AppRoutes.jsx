@@ -13,8 +13,8 @@ import Historico from "../pages/Historico";
 import AdminConfigRoute from "./AdminConfigRoute";
 import Configuracao from "../pages/configuracao/Configuracao";
 import Prestadores from "../pages/configuracao/Prestadores";
-import Modelos from "../pages/configuracao/Modelos";
-import ModeloDetalhe from "../pages/configuracao/ModeloDetalhe";
+import RedirecionarModelo from "../pages/configuracao/RedirecionarModelo";
+import NovaConfiguracaoWizard from "../pages/configuracao/NovaConfiguracaoWizard";
 import Regras from "../pages/configuracao/Regras";
 import Auditoria from "../pages/configuracao/Auditoria";
 import MapaEmissao from "../pages/configuracao/MapaEmissao";
@@ -72,11 +72,13 @@ export const AppRoutes = () => {
         >
           <Route index element={<Navigate to="mapa" replace />} />
           <Route path="mapa" element={<MapaEmissao />}>
+            <Route path="nova" element={<NovaConfiguracaoWizard />} />
             <Route path=":prestadorId/:condicao" element={<MapaFicha />} />
           </Route>
           <Route path="prestadores" element={<Prestadores />} />
-          <Route path="modelos" element={<Modelos />} />
-          <Route path="modelos/:id" element={<ModeloDetalhe />} />
+          {/* Antiga aba Modelos: unificada na ficha do Mapa (10/11/2026); rotas mantidas só como redirect. */}
+          <Route path="modelos" element={<Navigate to="/configuracao/mapa" replace />} />
+          <Route path="modelos/:id" element={<RedirecionarModelo />} />
           <Route path="regras" element={<Regras />} />
           <Route path="auditoria" element={<Auditoria />} />
         </Route>

@@ -1,11 +1,12 @@
 // Aba "Mapa de emissão": qual modelo cada empresa usa (padrão e por apólice/canal).
-// Esquerda: árvore por empresa (GET mapa/); direita: ficha da combinação (rota mapa/:prestadorId/:condicao).
+// Esquerda: árvore por empresa (GET mapa/); direita: ficha da combinação (rota mapa/:prestadorId/:condicao) ou o wizard
+// "Nova configuração" (rota mapa/nova?prestador=&tipo=). É o único lugar de configuração de modelo (a antiga aba
+// "Modelos" foi unificada aqui em 10/11/2026).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, Outlet, useMatch, useNavigate } from "react-router-dom";
+import { Link, useMatch, useNavigate, useOutlet } from "react-router-dom";
 import { FiChevronDown, FiChevronRight, FiPlus, FiRefreshCw, FiSearch, FiAlertTriangle } from "react-icons/fi";
 import { configService } from "../../services/config";
 import { Badge, Estado } from "./componentes";
-import NovaConfiguracaoModal from "./NovaConfiguracaoModal";
 import { STATUS_COMBINACAO, corCondicao, normalizarMapa, rotuloVersao } from "./mapaDados";
 import { formatarCnpj, mensagemErro } from "./utils";
 
@@ -59,16 +60,29 @@ function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova }) {
   const temPadraoProprio = empresa.padrao && !empresa.semMapeamento;
   return (
     <div className={`cfg-mapa-empresa ${empresa.ativo ? "" : "cfg-inativa"}`}>
-      <button type="button" className="cfg-mapa-empresa-cab" onClick={onAlternar} aria-expanded={aberta}>
-        {aberta ? <FiChevronDown /> : <FiChevronRight />}
-        <span className="cfg-mapa-empresa-nome">
-          <strong>{empresa.razao_social}</strong>
-          <small className="cfg-mono">{formatarCnpj(empresa.cnpj)}</small>
-        </span>
-        {!empresa.ativo && <Badge>inativa</Badge>}
-        {empresa.semMapeamento && <Badge cor="amarelo">fallback</Badge>}
-        {!aberta && empresa.condicoes.length > 0 && <small className="cfg-ajuda">+{empresa.condicoes.length}</small>}
-      </button>
+      <div className="cfg-mapa-empresa-linha">
+        <button type="button" className="cfg-mapa-empresa-cab" onClick={onAlternar} aria-expanded={aberta}>
+          {aberta ? <FiChevronDown /> : <FiChevronRight />}
+          <span className="cfg-mapa-empresa-nome">
+            <strong>{empresa.razao_social}</strong>
+            <small className="cfg-mono">{formatarCnpj(empresa.cnpj)}</small>
+          </span>
+          {!empresa.ativo && <Badge>inativa</Badge>}
+          {empresa.semMapeamento && <Badge cor="amarelo">fallback</Badge>}
+          {!aberta && empresa.condicoes.length > 0 && <small className="cfg-ajuda">+{empresa.condicoes.length}</small>}
+        </button>
+        {/* Fora do colapso: visível para TODA empresa (padrão por CNPJ 450–470, sem mapeamento etc.). */}
+        <button
+          type="button"
+          className="cfg-icon-btn cfg-mapa-empresa-nova"
+          onClick={() => onNova(empresa, empresa.semMapeamento ? "padrao" : "apolice")}
+          disabled={!empresa.ativo}
+          title={empresa.ativo ? `Nova configuração — ${empresa.razao_social}` : "Empresa inativa: ative-a em Prestadores antes de mapear"}
+          aria-label={`Nova configuração — ${empresa.razao_social}`}
+        >
+          <FiPlus />
+        </button>
+      </div>
       {aberta && (
         <div className="cfg-mapa-filhos">
           {empresa.padrao && (
@@ -94,7 +108,13 @@ function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova }) {
               selecionada={selecao.prestadorId === String(empresa.id) && selecao.condicao === c.chave}
             />
           ))}
-          <button type="button" className="cfg-btn cfg-btn-contorno cfg-btn-sm cfg-mapa-nova" onClick={() => onNova(empresa, "apolice")}>
+          <button
+            type="button"
+            className="cfg-btn cfg-btn-contorno cfg-btn-sm cfg-mapa-nova"
+            onClick={() => onNova(empresa, "apolice")}
+            disabled={!empresa.ativo}
+            title={empresa.ativo ? "" : "Empresa inativa: ative-a em Prestadores antes de mapear"}
+          >
             <FiPlus /> Nova configuração
           </button>
         </div>
@@ -119,7 +139,18 @@ export default function MapaEmissao() {
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
   const [abertas, setAbertas] = useState(() => new Set());
-  const [novo, setNovo] = useState(null); // {empresa, tipo}
+  const rotaNova = useMatch("/configuracao/mapa/nova");
+
+  // "+ Nova configuração": abre o wizard no painel da direita (empresa pré-selecionada quando houver).
+  const abrirNova = useCallback(
+    (empresa, tipo = "apolice") => {
+      const q = new URLSearchParams();
+      if (empresa?.id != null) q.set("prestador", String(empresa.id));
+      if (tipo) q.set("tipo", tipo);
+      navigate(`/configuracao/mapa/nova?${q.toString()}`);
+    },
+    [navigate]
+  );
 
   const carregar = useCallback(async (silencioso = false) => {
     if (!silencioso) setCarregando(true);
@@ -167,6 +198,8 @@ export default function MapaEmissao() {
     });
 
   const empresaSelecionada = empresas.find((e) => String(e.id) === selecao.prestadorId) || null;
+  // Rota filha: ficha (mapa/:prestadorId/:condicao) ou wizard (mapa/nova), com o contexto do mapa.
+  const outlet = useOutlet({ empresa: empresaSelecionada, empresas, recarregarMapa: () => carregar(true), abrirNova });
 
   return (
     <div className="cfg-mapa">
@@ -180,6 +213,14 @@ export default function MapaEmissao() {
             <FiRefreshCw />
           </button>
         </div>
+        <button
+          type="button"
+          className={`cfg-btn cfg-btn-primario cfg-btn-sm cfg-mapa-nova-global ${rotaNova ? "ativo" : ""}`}
+          onClick={() => abrirNova(empresaSelecionada, "apolice")}
+          title="Abre o wizard; a empresa é escolhida no primeiro passo"
+        >
+          <FiPlus /> Nova configuração
+        </button>
         <div className="cfg-mapa-legenda">
           <span>
             <PontoStatus status="ativo" /> ativo
@@ -199,7 +240,7 @@ export default function MapaEmissao() {
               aberta={abertas.has(String(e.id)) || !!busca.trim()}
               onAlternar={() => alternar(e.id)}
               selecao={selecao}
-              onNova={(empresa, tipo) => setNovo({ empresa, tipo })}
+              onNova={abrirNova}
             />
           ))}
           {transversais.length > 0 && !busca.trim() && (
@@ -216,36 +257,13 @@ export default function MapaEmissao() {
       </aside>
 
       <section className="cfg-mapa-ficha">
-        {selecao.prestadorId ? (
-          <Outlet
-            context={{
-              empresa: empresaSelecionada,
-              recarregarMapa: () => carregar(true),
-              abrirNova: (empresa, tipo) => setNovo({ empresa, tipo }),
-            }}
-          />
-        ) : (
+        {outlet || (
           <div className="cfg-card cfg-estado">
             Escolha uma empresa e uma configuração à esquerda (Padrão ou uma condição) para ver e editar todos os parâmetros do
             JSON enviado à Focus.
           </div>
         )}
       </section>
-
-      <NovaConfiguracaoModal
-        aberto={!!novo}
-        empresa={novo?.empresa}
-        tipoInicial={novo?.tipo}
-        onFechar={() => setNovo(null)}
-        onCriado={(resp, chave) => {
-          const pid = novo.empresa.id;
-          setNovo(null);
-          carregar(true);
-          navigate(`/configuracao/mapa/${pid}/${encodeURIComponent(chave)}`, {
-            state: { rascunhoId: resp?.objeto?.modelo?.id ?? null, proximosPassos: resp?.objeto?.proximos_passos ?? null },
-          });
-        }}
-      />
     </div>
   );
 }

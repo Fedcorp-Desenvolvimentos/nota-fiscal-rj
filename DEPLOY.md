@@ -58,20 +58,55 @@ e `VITE_N8N_URL` como **build args**. O deploy oficial é o rsync acima.
 Rota `/configuracao` para gerenciar os modelos de emissão de NFS-e sem deploy. Consome `/api/nfse/config/` (contrato
 em `NFS-e-Django/.claude/docs/api-config-v1.md`; endpoints centralizados em `src/services/config.js`). Abas:
 
-- **Mapa de emissão** (`/configuracao/mapa`, aba padrão): árvore por empresa (razão social + CNPJ) com "Padrão" e uma
-  linha por condição (Apólice X / Canal VR / Canal externo), cada uma com o modelo ativo e um ponto de status (verde =
-  ativo, amarelo = só rascunho, cinza = sem mapeamento → cai no padrão geral). "+ Nova configuração" cria rascunho +
-  regra (`POST mapa/criar/`); 409 (condição já mapeada) mostra o link para a ficha existente.
-  Ficha da combinação em `/configuracao/mapa/:prestadorId/:condicao` (`GET mapa/{prestador_id}/{condicao}/`):
-  formulário com **todos os parâmetros do JSON** gerado de `schema.grupos` (seções colapsáveis, ajuda e a chave do JSON
-  em cinza), versão ativa travada ("Clonar para editar"), rascunho editável (salvar com motivo, dry-run, ativar com as
-  mesmas travas), últimas notas, payload de exemplo (mascarado pelo servidor) e "Avançado" (hooks + JSON de
-  `campos_fixos` só com as chaves não cobertas pelo formulário).
+- **Mapa de emissão** (`/configuracao/mapa`, aba padrão) — **único lugar de configuração de modelo** (decisão do dono,
+  10/11/2026: "o modelo X da CONDOCORP é um modelo; não faz sentido configurar em dois lugares"). Árvore por empresa
+  (razão social + CNPJ) com "Padrão" e uma linha por condição (Apólice X / Canal VR / Canal externo), cada uma com o
+  modelo ativo e um ponto de status (verde = ativo, amarelo = só rascunho, cinza = sem mapeamento → padrão geral).
+- **"+ Nova configuração"** aparece no topo da árvore (escolhe a empresa no wizard), no cabeçalho de TODA empresa (fora
+  do colapso; desabilitado só para empresa inativa) e na ficha. Abre o **wizard** no painel da direita
+  (`/configuracao/mapa/nova?prestador=<id>&tipo=apolice|tipo_nfe|padrao`), com indicador de progresso e "Voltar":
+  1. **Condição**: empresa (pré-selecionada), tipo (Apólice | Canal VR/externo | Padrão da empresa — este só para empresa
+     `sem_mapeamento`), valor (apólice enviada em maiúsculas e sem espaços), **modelo base** (só versões ATIVAS sem
+     empresa ou da própria empresa e do mesmo provedor; pré-seleciona o modelo do padrão da empresa ou o FALLBACK se for
+     compatível; senão exige escolha explícita e explica), código opcional e motivo. "Criar rascunho e avançar" chama
+     `POST mapa/criar/` (modelo novo inativo + regra `[mapa]` inativa). Erros ficam no passo (tabela abaixo).
+  2. **Parâmetros**: formulário por grupos do rascunho (o mesmo da ficha), campos que diferem do modelo base destacados
+     em amarelo, salvar com motivo e dry-run inline.
+  3. **Ativar**: resumo (empresa, condição, regra e prioridade, versão), "Simular impacto" (`regras/simular/` com
+     `ativar_modelos=[id]`), "Ativar agora" (mesmas travas e resumo pós-ativação) ou "Deixar como rascunho". Ao terminar,
+     abre a ficha da combinação.
+- **Ficha** (`/configuracao/mapa/:prestadorId/:condicao`, `GET mapa/{prestador_id}/{condicao}/`): cabeçalho com
+  empresa/condição/regra/versão ativa; seletor de versões (ativa e rascunhos) com "Clonar para editar", "Ativar" e
+  "Desativar" (travas confirmáveis + resumo da ativação); formulário com **todos os parâmetros do JSON** gerado de
+  `schema.grupos` (versão ativa travada, rascunho editável com motivo); regras da versão; dry-run; últimas notas; payload
+  de exemplo (mascarado pelo servidor); **Histórico** (auditoria filtrada pela versão em foco e pela regra).
+- **A aba "Modelos" foi removida.** `/configuracao/modelos` redireciona para o mapa; `/configuracao/modelos/:id` procura
+  no `GET mapa/` a combinação cuja regra usa a versão (ou o mesmo código) e abre a ficha com ela em foco; sem combinação
+  (ex.: transversais E-2/B-1), vai para `/configuracao/mapa`.
 - **Prestadores** e **Auditoria**.
-- **Avançado → Modelos** (`modelos`, `modelos/:id`) e **Avançado → Regras** (`regras`): visão técnica por
-  código/versão e por prioridade (com simulação).
+- **Avançado → Regras** (`regras`): consulta e ajuste fino por prioridade (com simulação). A tela avisa que o caminho
+  normal é o Mapa.
 - Requer o backend com `GET mapa/`, `POST mapa/criar/`, `GET mapa/{prestador_id}/{condicao}/` e `schema.grupos`
   (§4.8/§9 do contrato). Sem eles a aba Mapa mostra erro/aviso; as demais abas continuam funcionando.
+
+### Erros de `POST mapa/criar/` (passo 1 do wizard) e o que fazer
+
+Todo erro aparece no passo (alerta com a mensagem do backend, o código HTTP/`codigo` e, em "Outros erros", as chaves de
+`erro.campos` sem campo próprio) e também numa notificação.
+
+| HTTP / `codigo` | Quando | O que fazer |
+|---|---|---|
+| 400 `motivo_obrigatorio` | motivo vazio ou < 5 caracteres | preencher o motivo |
+| 400 `validacao` em `prestador_id` | empresa INATIVA | ativar a empresa na aba Prestadores |
+| 400 `validacao` em `condicao` | apólice vazia/> 30 caracteres; canal diferente de `vr`/`externo`; **empresa cujo padrão vem antes da faixa de apólices (CONDOMED SP, regra 40 por CNPJ)** | corrigir o valor; no caso da CONDOMED SP, por decisão fiscal pendente (R84) a empresa só tem o padrão: ajustar os parâmetros na ficha "Padrão" |
+| 400 `validacao` em `base_modelo_id` | base inexistente, restrita a outra empresa ou empresa sem padrão nem FALLBACK | escolher outra base no combo (o combo já filtra as compatíveis) |
+| 400 `validacao` em `codigo_sugerido` | código fora do formato `LETRA-NÚMERO` ou já usado | deixar vazio (próximo livre) ou escolher outro |
+| 400 `validacao` (outros campos, ex.: `provedor`, `prioridade`) | base de outro provedor (`full_clean`), faixa de prioridade cheia | trocar a base; faixa cheia = falar com o time técnico (Avançado → Regras) |
+| 401 / 403 | sessão expirada / usuário fora de `NFSE_CONFIG_ADMINS` | entrar de novo / pedir acesso |
+| 404 `nao_encontrado` | empresa inexistente (mapa desatualizado) | recarregar o mapa |
+| 409 `condicao_duplicada` | já existe regra (ativa ou não, de qualquer versão) para essa empresa e condição | usar o link "Abrir a ficha existente" e editar o rascunho de lá (ou clonar a versão ativa) |
+
+Nada é gravado em nenhum desses casos (transação única); sucesso grava auditoria `criar` do modelo e da regra.
 
 - **Acesso decidido pelo backend**: no login (e ao reabrir a sessão) o front chama `GET /api/nfse/config/me/`; o item
   "Configuração" do menu e as rotas `/configuracao/*` só aparecem se `admin_config` for `true` (senão redireciona
@@ -117,4 +152,4 @@ A rota `/api/nfse/import/xlsx/` (e `/api/nfse/list/xlsx/`) foi removida do backe
 ### Outros
 
 - Lint pré-existente: `src/services/nfseService.js` (`response` não definido) e `src/services/historico.js` (`axios` não usado).
-- Bundle único de ~850 kB (aviso do Vite); considerar code-splitting depois.
+- Bundle único de ~960 kB (aviso do Vite); considerar code-splitting depois.

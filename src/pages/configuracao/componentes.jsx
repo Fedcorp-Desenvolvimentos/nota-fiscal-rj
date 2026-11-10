@@ -1,7 +1,7 @@
 // Componentes compartilhados da página Configuração.
 import { useEffect, useMemo, useState } from "react";
 import { FiX, FiAlertTriangle } from "react-icons/fi";
-import { diffObjetos, jsonOrdenado, valorCurto } from "./utils";
+import { diffObjetos, jsonOrdenado, mensagemErro, valorCurto } from "./utils";
 
 /** Modal simples (overlay + painel). `largo` para conteúdos extensos. */
 export function Modal({ titulo, aberto, onFechar, children, rodape, largo = false }) {
@@ -221,5 +221,46 @@ export function ListaDetalhes({ itens }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Alerta com TODA a informação do erro do backend ({erro:{codigo, mensagem, campos}}): mensagem principal e,
+ * em "Outros erros", as chaves de `campos` que não têm campo próprio na tela (`conhecidos`).
+ * Erro sem corpo do contrato (rede, 5xx com HTML) mostra a mensagem genérica de `mensagemErro`.
+ */
+export function ErrosBackend({ erro, conhecidos = [], padrao = "Falha na operação.", children }) {
+  if (!erro) return null;
+  const corpo = erro?.response?.data?.erro;
+  const status = erro?.response?.status;
+  const mensagem = corpo?.mensagem || mensagemErro(erro, padrao);
+  const conhecidosSet = new Set(conhecidos);
+  const outros = corpo?.campos && typeof corpo.campos === "object"
+    ? Object.entries(corpo.campos).filter(([k]) => !conhecidosSet.has(k))
+    : [];
+  return (
+    <div className="cfg-aviso cfg-aviso-perigo" role="alert">
+      <FiAlertTriangle />
+      <div>
+        <strong>{mensagem}</strong>
+        {(corpo?.codigo || status) && (
+          <small className="cfg-ajuda cfg-mono"> ({[status, corpo?.codigo].filter(Boolean).join(" · ")})</small>
+        )}
+        {outros.length > 0 && (
+          <>
+            <div style={{ marginTop: 4 }}>Outros erros:</div>
+            <ul className="cfg-lista-detalhes">
+              {outros.map(([k, v]) => (
+                <li key={k}>
+                  <span className="cfg-mono">{k === "__all__" || k === "non_field_errors" ? "geral" : k}</span>:{" "}
+                  {Array.isArray(v) ? v.map((m) => (typeof m === "string" ? m : JSON.stringify(m))).join(" ") : typeof v === "string" ? v : JSON.stringify(v)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {children}
+      </div>
+    </div>
   );
 }

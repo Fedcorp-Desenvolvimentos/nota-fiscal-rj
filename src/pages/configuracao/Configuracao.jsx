@@ -1,9 +1,10 @@
 // Página Configuração: gestão dos modelos de emissão NFS-e.
-// Primeira aba (rota padrão): Mapa de emissão (empresa × condição → modelo). Prestadores e Auditoria seguem como abas;
-// Modelos e Regras (visão técnica, por código/versão e por prioridade) ficam no grupo "Avançado".
+// Primeira aba (rota padrão): Mapa de emissão (empresa × condição → modelo), o ÚNICO lugar de configuração de modelo
+// (decisão do dono, 10/11/2026: a antiga aba "Modelos" foi unificada na ficha do mapa; /configuracao/modelos/* redireciona).
+// Prestadores e Auditoria seguem como abas; Regras (consulta e ajuste fino por prioridade) fica no grupo "Avançado".
 // Acesso controlado pelo backend (GET /api/nfse/config/me/ → admin_config).
 import { NavLink, Outlet } from "react-router-dom";
-import { FiMap, FiBriefcase, FiLayers, FiGitBranch, FiList } from "react-icons/fi";
+import { FiMap, FiBriefcase, FiGitBranch, FiList } from "react-icons/fi";
 import "../../styles/configuracao.css";
 
 const ABAS = [
@@ -13,7 +14,6 @@ const ABAS = [
 ];
 
 const ABAS_AVANCADO = [
-  { to: "modelos", rotulo: "Modelos", icone: FiLayers },
   { to: "regras", rotulo: "Regras", icone: FiGitBranch },
 ];
 
@@ -33,7 +33,8 @@ export default function Configuracao() {
         <h1 className="cfg-titulo">Configuração de emissão</h1>
         <p className="cfg-subtitulo">
           Qual modelo cada empresa usa (padrão e por apólice/canal) e todos os parâmetros do JSON enviado à Focus.
-          Alterações em versão ativa exigem clonar um rascunho, validar no dry-run e ativar.
+          Tudo se configura pelo Mapa de emissão: “+ Nova configuração” (condição → parâmetros → ativar) e, na ficha, clonar a
+          versão ativa, editar o rascunho, validar no dry-run e ativar.
         </p>
       </div>
 
@@ -41,7 +42,7 @@ export default function Configuracao() {
         {ABAS.map((aba) => (
           <Aba key={aba.to} aba={aba} />
         ))}
-        <span className="cfg-abas-grupo" title="Visão técnica: versões por código e regras por prioridade">
+        <span className="cfg-abas-grupo" title="Consulta e ajuste fino das regras por prioridade; o caminho normal é o Mapa de emissão">
           Avançado
         </span>
         {ABAS_AVANCADO.map((aba) => (

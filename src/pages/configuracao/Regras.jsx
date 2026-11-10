@@ -1,6 +1,6 @@
 // Aba Regras: regras de resolução de modelo (menor prioridade vence), CRUD com motivo e simulação.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
 import { FiPlus, FiEdit2, FiTrash2, FiRefreshCw, FiPlay, FiToggleLeft, FiToggleRight, FiLock } from "react-icons/fi";
 import { configService } from "../../services/config";
@@ -274,6 +274,15 @@ export default function Regras() {
               <FiPlus /> Nova regra
             </button>
           </div>
+        </div>
+
+        <div className="cfg-aviso cfg-aviso-alerta">
+          <span>
+            <strong>Avançado — consulta e ajuste fino.</strong> O caminho normal é o{" "}
+            <Link to="/configuracao/mapa">Mapa de emissão</Link>: “+ Nova configuração” cria o modelo e a regra da condição
+            (faixa de prioridade certa) e a ficha ativa a regra junto com a versão. Use esta aba só para conferir prioridades,
+            ligar/desligar uma regra ou casos que o mapa não cobre (ramo, produto, compat por razão social).
+          </span>
         </div>
 
         <div className="cfg-aviso">

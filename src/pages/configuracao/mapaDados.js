@@ -141,3 +141,66 @@ export const nomeCampo = (c) => c?.chave ?? c?.nome;
 
 /** Campo só leitura por natureza (vem do prestador ou é calculado pelo builder). */
 export const campoSomenteLeitura = (c) => c?.editavel === false || c?.origem === "prestador" || c?.origem === "derivado";
+
+/** Comparação estrutural simples (valores do formulário). */
+export function iguais(a, b) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
+/** Todos os campos do schema por grupos, achatados. */
+export function camposDosGrupos(grupos) {
+  return (grupos || []).flatMap((g) => g.campos || []);
+}
+
+/**
+ * Valores do formulário a partir do detalhe do modelo (§4.2): colunas e campos virtuais (origem "campos_fixos")
+ * já vêm no nível de cima pela `chave`; `campos_fixos_extras` = resto do JSON. Campos de origem "prestador"/"derivado"
+ * não existem no modelo: vêm do `valor` dos grupos da ficha (só leitura).
+ */
+export function valoresDoModelo(modelo, campos, valoresFicha = {}) {
+  const v = {};
+  campos.forEach((c) => {
+    const nome = nomeCampo(c);
+    if (c.origem === "prestador" || c.origem === "derivado") {
+      v[nome] = valoresFicha?.[nome];
+      return;
+    }
+    const bruto = modelo?.[nome];
+    v[nome] = nome === "prestador" && bruto && typeof bruto === "object" ? bruto.id : bruto;
+  });
+  if (!("hooks" in v)) v.hooks = modelo?.hooks ?? [];
+  if (!("campos_fixos_extras" in v) && modelo && "campos_fixos_extras" in modelo) v.campos_fixos_extras = modelo.campos_fixos_extras;
+  return v;
+}
+
+/** Normaliza o valor da apólice como o backend grava: maiúsculas, sem espaços. */
+export const normalizarApolice = (v) => String(v ?? "").replace(/\s+/g, "").toUpperCase();
+
+/** Id do prestador de um grupo/versão de modelo (aceita objeto ou id). */
+function idPrestador(p) {
+  if (p == null) return null;
+  return typeof p === "object" ? (p.id ?? null) : p;
+}
+
+/**
+ * Opções do combo "Modelo base" do wizard (contrato §9.3): só versões ATIVAS, de modelos sem prestador ou do próprio
+ * prestador, e do mesmo provedor da empresa (senão o backend recusa com 400 em base_modelo_id/provedor).
+ * `grupos` = agruparModelos(GET modelos/). Rótulo "A-1 v1 · nome" (o código vem do grupo; as versões não trazem).
+ */
+export function opcoesModeloBase(grupos, empresa) {
+  const provedor = empresa?.provedor_padrao || "";
+  return (grupos || [])
+    .filter((g) => g.ativa)
+    .filter((g) => {
+      const pid = idPrestador(g.prestador ?? g.ativa?.prestador);
+      return pid == null || String(pid) === String(empresa?.id);
+    })
+    .filter((g) => !provedor || !g.provedor || g.provedor === provedor)
+    .map((g) => ({
+      id: g.ativa.id ?? g.id_ativo,
+      codigo: g.codigo,
+      versao: g.ativa.versao ?? g.versao_ativa,
+      rotulo: `${g.codigo} v${g.ativa.versao ?? g.versao_ativa}${g.nome ? ` · ${g.nome}` : ""}`,
+      daEmpresa: idPrestador(g.prestador ?? g.ativa?.prestador) != null,
+    }));
+}

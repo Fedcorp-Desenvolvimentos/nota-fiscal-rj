@@ -28,8 +28,8 @@ export function useBreadcrumb() {
     '/historico': 'Histórico',
     '/configuracao': 'Configuração',
     '/configuracao/mapa': 'Mapa de emissão',
+    '/configuracao/mapa/nova': 'Nova configuração',
     '/configuracao/prestadores': 'Prestadores',
-    '/configuracao/modelos': 'Modelos',
     '/configuracao/regras': 'Regras',
     '/configuracao/auditoria': 'Auditoria',
   };

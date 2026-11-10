@@ -9,7 +9,7 @@ import { campoDoProvedor, campoSomenteLeitura, nomeCampo } from "./mapaDados";
 const LARGOS = new Set(["campos_fixos", "campos_fixos_extras", "hooks", "descricao_padrao", "observacoes", "discriminacao_padrao"]);
 const TIPOS_LARGOS = new Set(["json", "mapa_texto", "hooks"]);
 
-function Grupo({ grupo, aberto, onAlternar, children, qtdAlterados }) {
+function Grupo({ grupo, aberto, onAlternar, children, qtdAlterados, qtdDestacados }) {
   return (
     <section className={`cfg-grupo ${aberto ? "aberto" : ""}`}>
       <button type="button" className="cfg-grupo-titulo" onClick={onAlternar} aria-expanded={aberto}>
@@ -18,6 +18,7 @@ function Grupo({ grupo, aberto, onAlternar, children, qtdAlterados }) {
         <small className="cfg-ajuda">
           {grupo.campos.length} campo(s)
           {qtdAlterados > 0 ? ` · ${qtdAlterados} alterado(s)` : ""}
+          {qtdDestacados > 0 ? ` · ${qtdDestacados} diferente(s) do modelo base` : ""}
         </small>
       </button>
       {aberto && <div className="cfg-grupo-corpo">{children}</div>}
@@ -31,6 +32,7 @@ function Grupo({ grupo, aberto, onAlternar, children, qtdAlterados }) {
  *  - valores: {nome: valor}; onChange(nome, valor)
  *  - alterados: Set de nomes alterados (marca o grupo)
  *  - erros: {nome: "msg"}; obrigatorios: Set extra (obrigatórios por provedor)
+ *  - destacados: Set de nomes que diferem de uma referência (ex.: modelo base no wizard); marca o campo e o grupo
  */
 export default function FormularioGrupos({
   grupos = [],
@@ -45,6 +47,7 @@ export default function FormularioGrupos({
   provedor,
   onValidezJson,
   abertosInicial,
+  destacados,
 }) {
   const visiveis = grupos
     .map((g) => ({ ...g, campos: (g.campos || []).filter((c) => campoDoProvedor(c, provedor)) }))
@@ -61,6 +64,7 @@ export default function FormularioGrupos({
 
   // Erro em campo de grupo fechado: abre o grupo para o usuário ver.
   const comErro = (g) => g.campos.some((c) => erros[nomeCampo(c)]);
+  const qtdDestacados = (g) => (destacados ? g.campos.filter((c) => destacados.has(nomeCampo(c))).length : 0);
 
   if (visiveis.length === 0) return <div className="cfg-estado">O schema não trouxe grupos de campos.</div>;
 
@@ -81,12 +85,17 @@ export default function FormularioGrupos({
           aberto={abertos.has(g.chave) || comErro(g)}
           onAlternar={() => alternar(g.chave)}
           qtdAlterados={alterados ? g.campos.filter((c) => alterados.has(nomeCampo(c))).length : 0}
+          qtdDestacados={qtdDestacados(g)}
         >
           <div className="cfg-grid">
             {g.campos.map((c) => {
               const nome = nomeCampo(c);
               return (
-                <div key={nome} className={LARGOS.has(nome) || TIPOS_LARGOS.has(c.tipo) ? "cfg-grid-largo" : ""}>
+                <div
+                  key={nome}
+                  className={`${LARGOS.has(nome) || TIPOS_LARGOS.has(c.tipo) ? "cfg-grid-largo" : ""} ${destacados?.has(nome) ? "cfg-campo-diferente" : ""}`}
+                  title={destacados?.has(nome) ? "Difere do modelo base" : undefined}
+                >
                   <CampoModelo
                     nome={nome}
                     meta={c}
