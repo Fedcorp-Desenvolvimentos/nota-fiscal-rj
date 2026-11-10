@@ -249,3 +249,76 @@
 
 .cfg-lista-detalhes { margin: 6px 0 12px 18px; font-size: 13px; color: #334155; display: flex; flex-direction: column; gap: 4px; }
 .cfg-resumo h4 { margin: 14px 0 6px; font-size: 14px; color: #0f172a; }
+
+/* Abas: separador do grupo "Avançado" */
+.cfg-abas-grupo {
+  display: inline-flex; align-items: center; margin-left: 12px; padding: 0 6px 0 14px;
+  border-left: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: #94a3b8; white-space: nowrap;
+}
+
+/* Mapa de emissão: árvore à esquerda, ficha à direita */
+.cfg-mapa { display: grid; grid-template-columns: minmax(280px, 340px) 1fr; gap: 20px; align-items: start; }
+.cfg-mapa-arvore {
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); position: sticky; top: 12px; max-height: calc(100vh - 140px); overflow-y: auto;
+}
+.cfg-mapa-ficha { min-width: 0; }
+.cfg-mapa-topo { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.cfg-mapa-busca { position: relative; flex: 1; }
+.cfg-mapa-busca svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+.cfg-mapa-busca .cfg-input { padding-left: 30px; width: 100%; box-sizing: border-box; }
+.cfg-mapa-legenda { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: #64748b; margin-bottom: 8px; }
+.cfg-mapa-legenda span { display: inline-flex; align-items: center; gap: 4px; }
+.cfg-mapa-empresa { border-bottom: 1px solid #f1f5f9; }
+.cfg-mapa-empresa-cab {
+  width: 100%; display: flex; align-items: center; gap: 6px; padding: 8px 4px; background: none; border: none;
+  cursor: pointer; text-align: left; color: #334155;
+}
+.cfg-mapa-empresa-cab:hover { background: #f8fafc; }
+.cfg-mapa-empresa-nome { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.cfg-mapa-empresa-nome strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-mapa-empresa-nome small { color: #94a3b8; font-size: 11px; }
+.cfg-mapa-filhos { display: flex; flex-direction: column; gap: 2px; padding: 0 0 10px 18px; }
+.cfg-mapa-linha {
+  display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; font-size: 13px;
+  color: #334155; text-decoration: none;
+}
+.cfg-mapa-linha:hover { background: #f1f5f9; }
+.cfg-mapa-linha.selecionada { background: #eff6ff; outline: 1px solid #bfdbfe; }
+.cfg-mapa-padrao { font-weight: 500; }
+.cfg-mapa-versao { margin-left: auto; color: #64748b; font-size: 12px; white-space: nowrap; }
+.cfg-mapa-vazio { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; color: #92400e; padding: 4px 6px; }
+.cfg-mapa-nova { align-self: flex-start; margin-top: 6px; }
+.cfg-ponto { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.cfg-ponto-ok { background: #10b981; }
+.cfg-ponto-rascunho { background: #f59e0b; }
+.cfg-ponto-nao { background: #cbd5e1; }
+.cfg-link-btn { background: none; border: none; padding: 0; color: #2563eb; cursor: pointer; font-size: inherit; text-decoration: underline; }
+.cfg-ficha-sub { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; font-size: 13px; color: #64748b; }
+
+/* Formulário por grupos */
+.cfg-grupos { display: flex; flex-direction: column; gap: 8px; }
+.cfg-grupo { border: 1px solid #e2e8f0; border-radius: 8px; }
+.cfg-grupo-titulo {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: #f8fafc;
+  border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; color: #334155; text-align: left;
+}
+.cfg-grupo.aberto .cfg-grupo-titulo { border-bottom: 1px solid #e2e8f0; border-radius: 8px 8px 0 0; }
+.cfg-grupo-titulo small { margin-left: auto; font-weight: 400; }
+.cfg-grupo-corpo { padding: 14px; }
+.cfg-campo-modelo { display: flex; flex-direction: column; }
+.cfg-chave-json { color: #94a3b8; font-size: 11px; margin-top: -2px; }
+.cfg-chave-json code { font-family: var(--font-family-mono, monospace); background: #f1f5f9; padding: 0 4px; border-radius: 3px; color: #64748b; }
+.cfg-origem { color: #a78bfa; }
+.cfg-avancado { margin-top: 16px; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 10px 12px; }
+.cfg-avancado summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+.cfg-avancado[open] summary { margin-bottom: 12px; }
+
+@media (max-width: 900px) {
+  .cfg-mapa { grid-template-columns: 1fr; }
+  .cfg-mapa-arvore { position: static; max-height: none; }
+}
+.cfg-mapa-linha-ro { color: #64748b; }
+.cfg-mapa-transversais { margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 2px; }
+.cfg-mapa-transversais-titulo { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; padding: 4px 6px; }

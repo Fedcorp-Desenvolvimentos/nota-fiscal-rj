@@ -48,6 +48,10 @@ export const ENDPOINTS = {
   regra: (id) => `${BASE}/regras/${id}/`,
   regrasSimular: `${BASE}/regras/simular/`,
   auditoria: `${BASE}/auditoria/`,
+  // Mapa de emissão (contrato §9): empresa × condição → regra + modelo.
+  mapa: `${BASE}/mapa/`,
+  mapaCriar: `${BASE}/mapa/criar/`,
+  mapaFicha: (prestadorId, condicao) => `${BASE}/mapa/${prestadorId}/${encodeURIComponent(condicao)}/`,
 };
 
 const dados = (r) => r.data;
@@ -97,6 +101,14 @@ export const configService = {
     if (opcoes.ativar_modelos?.length) corpo.ativar_modelos = opcoes.ativar_modelos;
     return api.post(ENDPOINTS.regrasSimular, corpo).then(dados);
   },
+
+  // Mapa de emissão (§9)
+  /** Lista por prestador: {padrao, condicoes[]} (ver pages/configuracao/mapaDados.js para a normalização). */
+  listarMapa: () => api.get(ENDPOINTS.mapa).then(dados),
+  /** Cria rascunho + regra para a combinação. corpo: {prestador_id, condicao:{tipo, valor}, base_modelo_id?, motivo}. */
+  criarMapa: (corpo) => api.post(ENDPOINTS.mapaCriar, corpo).then(dados),
+  /** Ficha completa da combinação (modelo ativo por grupos, rascunhos, regra, últimas notas, payload de exemplo). */
+  fichaMapa: (prestadorId, condicao) => api.get(ENDPOINTS.mapaFicha(prestadorId, condicao)).then(dados),
 
   // Auditoria (paginada). Filtros: entidade (prestador|modelo|regra), entidade_id, acao, usuario, page, page_size.
   listarAuditoria: (filtros = {}) => {

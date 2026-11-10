@@ -27,6 +27,7 @@ export function useBreadcrumb() {
     '/consultas': 'Consultas',
     '/historico': 'Histórico',
     '/configuracao': 'Configuração',
+    '/configuracao/mapa': 'Mapa de emissão',
     '/configuracao/prestadores': 'Prestadores',
     '/configuracao/modelos': 'Modelos',
     '/configuracao/regras': 'Regras',
@@ -34,7 +35,13 @@ export function useBreadcrumb() {
   };
 
   const formatSegment = (segment) => {
-    return segment
+    let texto = segment;
+    try {
+      texto = decodeURIComponent(segment);
+    } catch {
+      /* segmento mal codificado: exibe como veio */
+    }
+    return texto
       .replace(/-/g, ' ')
       .replace(/^\w/, c => c.toUpperCase());
   };

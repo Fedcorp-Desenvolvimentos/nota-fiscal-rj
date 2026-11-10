@@ -55,10 +55,23 @@ e `VITE_N8N_URL` como **build args**. O deploy oficial é o rsync acima.
 
 ## Página Configuração (modelos de emissão)
 
-Rota `/configuracao` (sub-abas `prestadores`, `modelos`, `modelos/:id`, `regras`, `auditoria`) para gerenciar os
-modelos de emissão de NFS-e sem deploy: prestadores, versões de modelo (clonar → editar → dry-run → ativar), regras de
-resolução (com simulação) e auditoria. Consome `/api/nfse/config/` (contrato em
-`NFS-e-Django/.claude/docs/api-config-v1.md`; endpoints centralizados em `src/services/config.js`).
+Rota `/configuracao` para gerenciar os modelos de emissão de NFS-e sem deploy. Consome `/api/nfse/config/` (contrato
+em `NFS-e-Django/.claude/docs/api-config-v1.md`; endpoints centralizados em `src/services/config.js`). Abas:
+
+- **Mapa de emissão** (`/configuracao/mapa`, aba padrão): árvore por empresa (razão social + CNPJ) com "Padrão" e uma
+  linha por condição (Apólice X / Canal VR / Canal externo), cada uma com o modelo ativo e um ponto de status (verde =
+  ativo, amarelo = só rascunho, cinza = sem mapeamento → cai no padrão geral). "+ Nova configuração" cria rascunho +
+  regra (`POST mapa/criar/`); 409 (condição já mapeada) mostra o link para a ficha existente.
+  Ficha da combinação em `/configuracao/mapa/:prestadorId/:condicao` (`GET mapa/{prestador_id}/{condicao}/`):
+  formulário com **todos os parâmetros do JSON** gerado de `schema.grupos` (seções colapsáveis, ajuda e a chave do JSON
+  em cinza), versão ativa travada ("Clonar para editar"), rascunho editável (salvar com motivo, dry-run, ativar com as
+  mesmas travas), últimas notas, payload de exemplo (mascarado pelo servidor) e "Avançado" (hooks + JSON de
+  `campos_fixos` só com as chaves não cobertas pelo formulário).
+- **Prestadores** e **Auditoria**.
+- **Avançado → Modelos** (`modelos`, `modelos/:id`) e **Avançado → Regras** (`regras`): visão técnica por
+  código/versão e por prioridade (com simulação).
+- Requer o backend com `GET mapa/`, `POST mapa/criar/`, `GET mapa/{prestador_id}/{condicao}/` e `schema.grupos`
+  (§4.8/§9 do contrato). Sem eles a aba Mapa mostra erro/aviso; as demais abas continuam funcionando.
 
 - **Acesso decidido pelo backend**: no login (e ao reabrir a sessão) o front chama `GET /api/nfse/config/me/`; o item
   "Configuração" do menu e as rotas `/configuracao/*` só aparecem se `admin_config` for `true` (senão redireciona

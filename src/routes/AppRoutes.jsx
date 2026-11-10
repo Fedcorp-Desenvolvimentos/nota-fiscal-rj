@@ -17,6 +17,8 @@ import Modelos from "../pages/configuracao/Modelos";
 import ModeloDetalhe from "../pages/configuracao/ModeloDetalhe";
 import Regras from "../pages/configuracao/Regras";
 import Auditoria from "../pages/configuracao/Auditoria";
+import MapaEmissao from "../pages/configuracao/MapaEmissao";
+import MapaFicha from "../pages/configuracao/MapaFicha";
 
 // Layout principal (com Sidebar e Breadcrumb)
 import MainLayout from "../layouts/MainLayout";
@@ -68,7 +70,10 @@ export const AppRoutes = () => {
             </AdminConfigRoute>
           }
         >
-          <Route index element={<Navigate to="prestadores" replace />} />
+          <Route index element={<Navigate to="mapa" replace />} />
+          <Route path="mapa" element={<MapaEmissao />}>
+            <Route path=":prestadorId/:condicao" element={<MapaFicha />} />
+          </Route>
           <Route path="prestadores" element={<Prestadores />} />
           <Route path="modelos" element={<Modelos />} />
           <Route path="modelos/:id" element={<ModeloDetalhe />} />
