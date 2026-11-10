@@ -3,13 +3,23 @@
 // backend e "Confirmar mesmo assim" (`confirmar: true`); 409 regra_invalida NÃO aceita confirmar. Após ativar, mostra o
 // ResumoAtivacao (desativadas, diff de regras, simulação). Usado pela ficha do mapa e pelo wizard "Nova configuração".
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { useSnackbar } from "notistack";
 import { configService } from "../../services/config";
 import { CampoMotivo, ErrosBackend, ListaDetalhes, Modal } from "./componentes";
 import ResumoAtivacao from "./ResumoAtivacao";
 import { rotuloVersao } from "./mapaDados";
-import { codigoErro, errosDeCampo, listaCampos, mensagemBackend, mensagemErro, notificarEscrita, precisaConfirmar, validarMotivo } from "./utils";
+import {
+  MENSAGEM_CONFLITO_CONDICAO,
+  codigoErro,
+  ehConflitoCondicao,
+  errosDeCampo,
+  listaCampos,
+  mensagemBackend,
+  mensagemErro,
+  notificarEscrita,
+  precisaConfirmar,
+  validarMotivo,
+} from "./utils";
 
 const TEXTOS = {
   clonar: {
@@ -26,7 +36,7 @@ const TEXTOS = {
     classe: "cfg-btn-sucesso",
     aviso: "cfg-aviso-alerta",
     texto:
-      "Esta versão passa a emitir de verdade e a versão ativa atual do código é desativada na mesma operação. Regras [mapa] inativas desta versão são ativadas junto. O servidor confere o modelo e as regras antes de gravar (regra inválida bloqueia; versão sem regra ativa pede confirmação; conflito de prioridade bloqueia). A fila aplica em até 60 s. Rollback: ativar de novo a versão anterior (ou desativar, se for a única).",
+      "Esta versão passa a emitir de verdade e a versão ativa atual do código é desativada na mesma operação. Regras [mapa] inativas desta versão são ativadas junto. O servidor confere o modelo e as regras antes de gravar (regra inválida bloqueia; versão sem regra ativa pede confirmação; regra com as mesmas condições de uma regra efetiva de outro modelo bloqueia). A fila aplica em até 60 s. Rollback: ativar de novo a versão anterior (ou desativar, se for a única).",
   },
   desativar: {
     titulo: (m) => `Desativar ${rotuloVersao(m)}`,
@@ -51,6 +61,7 @@ export default function AcaoModeloModal({ acao, modelo, onFechar, onConcluido, o
   const [executando, setExecutando] = useState(false);
   const [confirmacao, setConfirmacao] = useState(null);
   const [regrasInvalidas, setRegrasInvalidas] = useState(null);
+  const [conflito, setConflito] = useState(null);
   const [resumo, setResumo] = useState(null);
 
   useEffect(() => {
@@ -60,6 +71,7 @@ export default function AcaoModeloModal({ acao, modelo, onFechar, onConcluido, o
     setErro(null);
     setConfirmacao(null);
     setRegrasInvalidas(null);
+    setConflito(null);
   }, [acao]);
 
   const executar = async (confirmar = false) => {
@@ -72,6 +84,7 @@ export default function AcaoModeloModal({ acao, modelo, onFechar, onConcluido, o
     setErroMotivo("");
     setErro(null);
     setRegrasInvalidas(null);
+    setConflito(null);
     try {
       const m = motivo.trim();
       if (acao === "clonar") {
@@ -97,6 +110,12 @@ export default function AcaoModeloModal({ acao, modelo, onFechar, onConcluido, o
       if (codigoErro(e) === "regra_invalida") {
         setRegrasInvalidas({ mensagem: mensagemBackend(e, "Há regras ativas inválidas nesta versão."), itens: listaCampos(e) });
         enqueueSnackbar("Ativação recusada: corrija as regras desta versão.", { variant: "error" });
+        return;
+      }
+      // 409 conflito_condicao (alias antigo: conflito_prioridade): não aceita confirmar.
+      if (ehConflitoCondicao(e)) {
+        setConflito({ mensagem: mensagemBackend(e, ""), itens: listaCampos(e) });
+        enqueueSnackbar(`Ativação recusada: ${MENSAGEM_CONFLITO_CONDICAO}`, { variant: "error" });
         return;
       }
       const campos = errosDeCampo(e);
@@ -127,7 +146,7 @@ export default function AcaoModeloModal({ acao, modelo, onFechar, onConcluido, o
                   {executando ? "Processando…" : "Confirmar mesmo assim"}
                 </button>
               ) : (
-                <button type="button" className={`cfg-btn ${t.classe}`} onClick={() => executar(false)} disabled={executando || !!regrasInvalidas}>
+                <button type="button" className={`cfg-btn ${t.classe}`} onClick={() => executar(false)} disabled={executando || !!regrasInvalidas || !!conflito}>
                   {executando ? "Processando…" : t.botao}
                 </button>
               )}
@@ -153,8 +172,19 @@ export default function AcaoModeloModal({ acao, modelo, onFechar, onConcluido, o
                 <div>
                   <strong>{regrasInvalidas.mensagem}</strong>
                   <ListaDetalhes itens={regrasInvalidas.itens} />
-                  Esta trava não aceita confirmação: corrija ou desative essas regras na versão (Avançado → Regras).{" "}
-                  <Link to={`/configuracao/regras?modelo=${modelo?.id}`}>Abrir regras desta versão</Link>
+                  Esta trava não aceita confirmação. Confira as regras na seção “Regras desta versão” da ficha; se a regra veio de
+                  um clone com outra empresa, crie a configuração de novo pelo Mapa (“+ Nova configuração”) ou acione o time técnico.
+                </div>
+              </div>
+            )}
+            {conflito && (
+              <div className="cfg-aviso cfg-aviso-perigo">
+                <div>
+                  <strong>{MENSAGEM_CONFLITO_CONDICAO}</strong>
+                  {conflito.mensagem && <div>{conflito.mensagem}</div>}
+                  <ListaDetalhes itens={conflito.itens} />
+                  Nada foi gravado. Esta trava não aceita confirmação: desative a outra configuração (na ficha dela) ou ajuste este
+                  rascunho antes de ativar.
                 </div>
               </div>
             )}

@@ -30,7 +30,6 @@ export function useBreadcrumb() {
     '/configuracao/mapa': 'Mapa de emissão',
     '/configuracao/mapa/nova': 'Nova configuração',
     '/configuracao/prestadores': 'Prestadores',
-    '/configuracao/regras': 'Regras',
     '/configuracao/auditoria': 'Auditoria',
   };
 

@@ -31,7 +31,7 @@ export function rotuloCondicao(tipo, valor, extra = {}) {
     return canal ? canal.rotulo : `Canal ${valor}`;
   }
   if (tipo === "prefixo" || tipo === "prefixo_fatura") return `Prefixo ${valor}`;
-  if (tipo === "razao_social") return "Compat. razão social";
+  if (tipo === "razao_social") return `Razão social ${valor ?? ""}`.trim(); // compat removida (10/11/2026); só se o backend ainda mandar
   if (tipo === "outra") return extra.outras_condicoes ? `Outra: ${extra.outras_condicoes}` : "Outra condição";
   return `${TIPOS_CONDICAO[tipo] || tipo} ${valor ?? ""}`.trim();
 }
@@ -42,6 +42,148 @@ export function corCondicao(tipo) {
   if (tipo === "prefixo" || tipo === "prefixo_fatura") return "amarelo";
   if (tipo === "razao_social" || tipo === "outra") return "neutro";
   return "neutro";
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Camadas fixas (decisão do dono, 10/11/2026; contrato §9.1, R85, migração 0044): a prioridade numérica deixou de ser
+// exposta/editável. Ordem de avaliação:
+//   canal_empresa (5) → canais (10–39, externo/VR transversais) → apolice (900) → padrao (999) → fallback (1000);
+//   `legado` = regras inativas de compat (razão social, apólice 1–9).
+// O backend manda `camada: {chave, rotulo}` em cada condição de GET mapa/ (sem `prioridade`), `camada: "<chave>"` na
+// representação de regra (§5) e em diff_regras, e `faixas.camadas` (lista com rótulo e prioridade). Sem `camada`, ela é
+// deduzida do tipo da condição (ou das condições da regra). O número fica só informativo, em cinza.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Camadas conhecidas: rótulo curto exibido, ordem (menor = avaliada antes) e prioridade padrão (§9.1). */
+export const CAMADAS = {
+  canal_empresa: { chave: "canal_empresa", rotulo: "Canal da empresa", ordem: 0, prioridade: 5 },
+  canais: { chave: "canais", rotulo: "Canal", ordem: 1, prioridade: [10, 39] },
+  apolice: { chave: "apolice", rotulo: "Apólice", ordem: 2, prioridade: 900 },
+  padrao: { chave: "padrao", rotulo: "Padrão da empresa", ordem: 3, prioridade: 999 },
+  fallback: { chave: "fallback", rotulo: "Fallback geral", ordem: 4, prioridade: 1000 },
+  legado: { chave: "legado", rotulo: "Legado (inativa)", ordem: 5, prioridade: null },
+  sistema: { chave: "sistema", rotulo: "Regra de sistema", ordem: 6, prioridade: null },
+  outra: { chave: "outra", rotulo: "Regra", ordem: 7, prioridade: null },
+};
+
+/** Ordem padrão das camadas (legenda quando o backend não manda `faixas.camadas`). */
+export const ORDEM_CAMADAS = ["canal_empresa", "canais", "apolice", "padrao", "fallback"];
+
+/** Camadas da primeira etapa (canais): ficam juntas no topo da árvore / da empresa. */
+export const ehCanal = (camada) => camada?.chave === "canais" || camada?.chave === "canal_empresa";
+
+/** Prioridade como texto: 900, [10, 39] → "10–39". */
+export function textoPrioridade(p) {
+  if (p == null) return null;
+  if (Array.isArray(p)) return p.length === 2 ? `${p[0]}–${p[1]}` : p.join(", ");
+  return String(p);
+}
+
+/** Chave canônica (tolerante a variações: "canal" = canais; "canal_empresa"; "padrao_empresa"...). */
+function chaveCanonica(chave) {
+  const k = String(chave || "").toLowerCase();
+  if (!k) return null;
+  if (k.startsWith("canal_emp") || k === "canal_da_empresa") return "canal_empresa";
+  if (k.startsWith("canal")) return "canais";
+  if (k.startsWith("apolice")) return "apolice";
+  if (k.startsWith("padrao")) return "padrao";
+  if (k.startsWith("fallback")) return "fallback";
+  if (k.startsWith("legado")) return "legado";
+  return k;
+}
+
+/** Camada deduzida das condições de uma regra (texto "prestador=...; apolice=..." ou campos alterados do diff). */
+function chaveDaRegra(regra) {
+  if (!regra) return null;
+  const cond = String(regra.condicoes || "").toLowerCase();
+  const alvo = (campo) => regra.campos?.[campo]?.alvo ?? regra.campos?.[campo]?.atual ?? null;
+  if (regra.fallback || /^fallback/i.test(regra.descricao || "") || (!cond && regra.prioridade >= 1000)) return "fallback";
+  const temPrestador = /prestador\s*=/.test(cond);
+  const temCanal = /tipo_nfe\s*=\s*(vr|externo)/.test(cond) || ["vr", "externo"].includes(alvo("tipo_nfe"));
+  if (/apolice\s*=/.test(cond) || alvo("apolice")) return "apolice";
+  if (temCanal) return temPrestador ? "canal_empresa" : "canais";
+  if (/prefixo_fatura\s*=/.test(cond) && !temPrestador) return "canais";
+  if (temPrestador && !cond.replace(/prestador\s*=\s*[^;,\s]+/, "").replace(/[;,\s]/g, "")) return "padrao";
+  if (cond) return "apolice"; // demais combinações caem na camada 900 (§9.1)
+  return null;
+}
+
+/**
+ * Normaliza a camada de uma condição/regra → {chave, rotulo, rotuloBackend, prioridade (texto), ordem}.
+ * fonte: objeto com `camada` (objeto ou string do backend) e/ou `tipo`, `regra`, `semMapeamento`/`fallback`.
+ * prioridades: mapa chave → prioridade vindo de `faixas.camadas` (opcional).
+ */
+export function camadaDe(fonte = {}, prioridades = null) {
+  const bruta = fonte.camada ?? fonte.regra?.camada ?? null;
+  let chave = null;
+  let rotuloBackend = null;
+  let prioridade = null;
+  if (bruta && typeof bruta === "object") {
+    chave = chaveCanonica(bruta.chave);
+    rotuloBackend = bruta.rotulo || null;
+    prioridade = bruta.prioridade ?? null;
+  } else if (typeof bruta === "string") {
+    chave = chaveCanonica(bruta);
+  }
+  if (!chave) {
+    if (fonte.semMapeamento || fonte.fallback) chave = "fallback";
+    else if (fonte.tipo === "tipo_nfe") chave = "canal_empresa";
+    else if (fonte.tipo === "apolice") chave = "apolice";
+    else if (fonte.tipo === "padrao") chave = "padrao";
+    else chave = chaveDaRegra(fonte.regra || fonte) || (fonte.tipo ? "sistema" : "outra");
+  }
+  const conhecida = CAMADAS[chave];
+  prioridade = prioridade ?? fonte.regra?.prioridade ?? fonte.prioridade ?? prioridades?.[chave] ?? conhecida?.prioridade ?? null;
+  return {
+    chave,
+    rotulo: conhecida?.rotulo || rotuloBackend || chave,
+    rotuloBackend,
+    prioridade: textoPrioridade(prioridade),
+    ordem: conhecida?.ordem ?? CAMADAS.sistema.ordem,
+  };
+}
+
+/** Ordena por camada mantendo a ordem do backend dentro da camada (o backend já manda na ordem do resolvedor). */
+export function ordenarPorCamada(lista) {
+  return [...(lista || [])].sort((a, b) => (a.camada?.ordem ?? 9) - (b.camada?.ordem ?? 9));
+}
+
+/** Lista de camadas de `faixas` (§9.2: `{camadas: [...]}`; aceita lista direta). */
+function listaFaixas(faixas) {
+  if (Array.isArray(faixas)) return faixas;
+  if (Array.isArray(faixas?.camadas)) return faixas.camadas;
+  return [];
+}
+
+/** Mapa chave → prioridade a partir de `faixas.camadas` (null se o backend não mandou). */
+export function prioridadesDasFaixas(faixas) {
+  const lista = listaFaixas(faixas);
+  if (!lista.length) return null;
+  const m = {};
+  lista.forEach((f) => {
+    const k = chaveCanonica(f?.chave);
+    if (k) m[k] = f.prioridade ?? null;
+  });
+  return m;
+}
+
+/** Camadas para a legenda: `faixas.camadas` do backend (rótulo curto + o do backend no title) ou a ordem padrão. */
+export function camadasDaLegenda(faixas) {
+  const lista = listaFaixas(faixas);
+  if (lista.length) {
+    return lista
+      .map((f) => {
+        const chave = chaveCanonica(f?.chave) || "sistema";
+        return {
+          chave,
+          rotulo: CAMADAS[chave]?.rotulo || f?.rotulo || f?.chave,
+          rotuloBackend: f?.rotulo || null,
+          prioridade: textoPrioridade(f?.prioridade),
+        };
+      })
+      .filter((f) => f.rotulo && f.chave !== "legado");
+  }
+  return ORDEM_CAMADAS.map((k) => ({ ...CAMADAS[k], rotuloBackend: null, prioridade: textoPrioridade(CAMADAS[k].prioridade) }));
 }
 
 function versaoCurta(m) {
@@ -68,7 +210,7 @@ export function rotuloVersao(m) {
  * {chave, tipo, valor, tipo_nfe, outras_condicoes, regra, modelo, modelo_ativo, versoes_rascunho}.
  * Status: modelo_ativo → "ativo"; senão rascunho/modelo inativo → "rascunho"; padrão por FALLBACK → "sem".
  */
-export function normalizarCombinacao(c, { tipoPadrao = null, semMapeamento = false } = {}) {
+export function normalizarCombinacao(c, { tipoPadrao = null, semMapeamento = false, prioridades = null } = {}) {
   if (!c) return null;
   const cond = c.condicao && typeof c.condicao === "object" ? c.condicao : null;
   const tipo = cond?.tipo ?? c.tipo ?? tipoPadrao ?? "padrao";
@@ -82,6 +224,10 @@ export function normalizarCombinacao(c, { tipoPadrao = null, semMapeamento = fal
   if (sem) status = "sem";
   else if (modeloAtivo?.id != null) status = "ativo";
   else if (rascunhos.length || modelo) status = "rascunho";
+  const camada = camadaDe(
+    { camada: c.camada ?? cond?.camada, tipo, regra: c.regra, semMapeamento: sem, fallback: c.fallback },
+    prioridades
+  );
   return {
     chave: cond?.chave ?? c.chave ?? chaveCondicao(tipo, valor),
     tipo,
@@ -93,34 +239,51 @@ export function normalizarCombinacao(c, { tipoPadrao = null, semMapeamento = fal
     modeloAtivo,
     rascunhos,
     semMapeamento: sem,
+    camada,
     status,
   };
 }
 
 /**
- * Normaliza GET mapa/ → {empresas: [{id, razao_social, cnpj, ativo, provedor_padrao, padrao, condicoes, semMapeamento}],
- * transversais: [combinações sem prestador]}.
+ * Normaliza GET mapa/ → {empresas: [{id, razao_social, cnpj, ativo, provedor_padrao, padrao, condicoes, sistema, semMapeamento}],
+ * transversais, canais (transversais da camada Canal), sistema (demais transversais), fallback, camadas (legenda)}.
+ * As condições de cada empresa vêm ordenadas por camada (Canal da empresa, Apólice); `sistema` = legado da empresa.
  */
 export function normalizarMapa(data) {
   const lista = Array.isArray(data) ? data : data?.empresas || data?.results || [];
+  const prioridades = prioridadesDasFaixas(data?.faixas);
   const empresas = lista
     .map((e) => {
       const p = e.prestador && typeof e.prestador === "object" ? e.prestador : e;
       const sem = !!e.sem_mapeamento;
+      const todas = ordenarPorCamada((e.condicoes || []).map((c) => normalizarCombinacao(c, { prioridades })).filter(Boolean));
       return {
         id: p.id ?? e.prestador_id,
         razao_social: p.razao_social || `#${p.id}`,
         cnpj: p.cnpj || "",
         ativo: p.ativo !== false,
         provedor_padrao: p.provedor_padrao || "",
-        padrao: normalizarCombinacao(e.padrao, { tipoPadrao: "padrao", semMapeamento: sem }),
-        condicoes: (e.condicoes || []).map((c) => normalizarCombinacao(c)).filter(Boolean),
+        padrao: normalizarCombinacao(e.padrao, { tipoPadrao: "padrao", semMapeamento: sem, prioridades }),
+        // Canal da empresa → Apólice; `legado` (compat razão social, apólice 1–9 inativas) e outras camadas fora da
+        // ordem normal vão para "Regras de sistema" da empresa (colapsado).
+        condicoes: todas.filter((c) => ["canal_empresa", "canais", "apolice", "padrao"].includes(c.camada.chave)),
+        sistema: todas.filter((c) => !["canal_empresa", "canais", "apolice", "padrao"].includes(c.camada.chave)),
         semMapeamento: sem,
       };
     })
     .sort((a, b) => String(a.razao_social).localeCompare(String(b.razao_social), "pt-BR"));
-  const transversais = (Array.isArray(data?.transversais) ? data.transversais : []).map((c) => normalizarCombinacao(c)).filter(Boolean);
-  return { empresas, transversais };
+  const transversais = ordenarPorCamada(
+    (Array.isArray(data?.transversais) ? data.transversais : []).map((c) => normalizarCombinacao(c, { prioridades })).filter(Boolean)
+  );
+  // Canais transversais (externo/VR) valem para todas as empresas; o resto (FALLBACK, XLSX inativa...) = "regras de sistema".
+  const canais = transversais.filter((c) => ehCanal(c.camada));
+  const sistema = transversais.filter((c) => !ehCanal(c.camada));
+  // FALLBACK geral: o transversal da camada fallback (ou o `padrao` de uma empresa sem mapeamento).
+  const fallback =
+    transversais.find((c) => c.camada.chave === "fallback") ||
+    empresas.find((e) => e.semMapeamento && e.padrao)?.padrao ||
+    null;
+  return { empresas, transversais, canais, sistema, fallback, camadas: camadasDaLegenda(data?.faixas) };
 }
 
 export const STATUS_COMBINACAO = {

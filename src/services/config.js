@@ -4,7 +4,9 @@
 //  - Leituras devolvem o recurso direto; escritas devolvem o envelope
 //    {objeto, auditoria_id, efetivo_em_ate_segundos, avisos}.
 //  - Erros: {erro: {codigo, mensagem, campos}} (ver pages/configuracao/utils.js).
-//  - Paginadas (prestadores, regras, auditoria): ?page=&page_size= (máx. 200) → {count, next, previous, results}.
+//  - Paginadas (prestadores, auditoria): ?page=&page_size= (máx. 200) → {count, next, previous, results}.
+//  - Camadas fixas (10/11/2026): a aba Regras saiu; o front não cria/edita regra nem prioridade. A regra nasce em
+//    POST mapa/criar/ (camada definida pela condição) e só `regras/simular/` continua em uso.
 //  - Toda escrita exige `motivo` (≥ 5 caracteres); dry-run e simular não gravam e não pedem motivo.
 //  - Travas confirmáveis: envie SEM `confirmar`; se vier 400 `confirmacao_necessaria` (prestador) ou
 //    409 `versao_sem_regra_ativa` / `ultima_versao_ativa` (modelo), mostre a mensagem e repita com `confirmar: true`
@@ -44,11 +46,9 @@ export const ENDPOINTS = {
   modeloAtivar: (id) => `${BASE}/modelos/${id}/ativar/`,
   modeloDesativar: (id) => `${BASE}/modelos/${id}/desativar/`,
   modeloDryRun: (id) => `${BASE}/modelos/${id}/dry-run/`,
-  regras: `${BASE}/regras/`,
-  regra: (id) => `${BASE}/regras/${id}/`,
   regrasSimular: `${BASE}/regras/simular/`,
   auditoria: `${BASE}/auditoria/`,
-  // Mapa de emissão (contrato §9): empresa × condição → regra + modelo.
+  // Mapa de emissão (contrato §9): empresa × condição → regra (camada fixa) + modelo.
   mapa: `${BASE}/mapa/`,
   mapaCriar: `${BASE}/mapa/criar/`,
   mapaFicha: (prestadorId, condicao) => `${BASE}/mapa/${prestadorId}/${encodeURIComponent(condicao)}/`,
@@ -82,15 +82,7 @@ export const configService = {
   /** entrada: { id_integracao } ou { fixture } */
   dryRunModelo: (id, entrada) => api.post(ENDPOINTS.modeloDryRun(id), entrada).then(dados),
 
-  // Regras de resolução
-  /** Filtros: modelo, codigo, ativo, efetiva, page, page_size. */
-  listarRegras: (params = {}) =>
-    api.get(ENDPOINTS.regras, { params: { page_size: PAGE_SIZE_MAX, ...params } }).then(dados),
-  criarRegra: (campos, motivo) => api.post(ENDPOINTS.regras, { ...campos, motivo }).then(dados),
-  atualizarRegra: (id, campos, motivo) => api.patch(ENDPOINTS.regra(id), { ...campos, motivo }).then(dados),
-  // DELETE com corpo (motivo) e também na query string, para servidores que ignoram corpo em DELETE.
-  excluirRegra: (id, motivo) =>
-    api.delete(ENDPOINTS.regra(id), { data: { motivo }, params: { motivo } }).then(dados),
+  // Regras de resolução: só a simulação (o CRUD de regras saiu do front com a aba Regras, 10/11/2026).
   /**
    * Simula modelo atual × proposto nas últimas N notas (não grava).
    * opcoes: { regras?: [ajustes em memória], ativar_modelos?: [ids de versões tratadas como ativas] }
@@ -103,9 +95,12 @@ export const configService = {
   },
 
   // Mapa de emissão (§9)
-  /** Lista por prestador: {padrao, condicoes[]} (ver pages/configuracao/mapaDados.js para a normalização). */
+  /** Lista por prestador: {padrao, condicoes[] com `camada`}, transversais e `faixas` (camadas com rótulos). */
   listarMapa: () => api.get(ENDPOINTS.mapa).then(dados),
-  /** Cria rascunho + regra para a combinação. corpo: {prestador_id, condicao:{tipo, valor}, base_modelo_id?, motivo}. */
+  /**
+   * Cria rascunho + regra para a combinação. corpo: {prestador_id, condicao:{tipo, valor}, base_modelo_id?, motivo}.
+   * Sem prioridade: a camada vem da condição (apólice → Apólice, padrao → Padrão da empresa, tipo_nfe → Canal).
+   */
   criarMapa: (corpo) => api.post(ENDPOINTS.mapaCriar, corpo).then(dados),
   /** Ficha completa da combinação (modelo ativo por grupos, rascunhos, regra, últimas notas, payload de exemplo). */
   fichaMapa: (prestadorId, condicao) => api.get(ENDPOINTS.mapaFicha(prestadorId, condicao)).then(dados),

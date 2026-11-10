@@ -264,3 +264,22 @@ export function ErrosBackend({ erro, conhecidos = [], padrao = "Falha na operaç
     </div>
   );
 }
+
+/**
+ * Rótulo da camada da regra ("Apólice", "Padrão da empresa", "Canal", "Fallback geral") com o número da prioridade em
+ * cinza pequeno, só informativo (decisão do dono, 10/11/2026: prioridade não é mais editável nem exposta como conceito).
+ * props: camada = {rotulo, prioridade} (ver mapaDados.camadaDe); semNumero oculta o número.
+ */
+export function RotuloCamada({ camada, semNumero = false, prefixo = "" }) {
+  if (!camada) return null;
+  return (
+    <span
+      className="cfg-camada"
+      title={`Camada ${camada.rotuloBackend || camada.rotulo}${camada.prioridade != null ? ` (prioridade interna ${camada.prioridade}, só informativa)` : ""}`}
+    >
+      {prefixo}
+      {camada.rotulo}
+      {!semNumero && camada.prioridade != null && <small className="cfg-camada-num">{camada.prioridade}</small>}
+    </span>
+  );
+}

@@ -1,13 +1,18 @@
 // Aba "Mapa de emissão": qual modelo cada empresa usa (padrão e por apólice/canal).
 // Esquerda: árvore por empresa (GET mapa/); direita: ficha da combinação (rota mapa/:prestadorId/:condicao) ou o wizard
 // "Nova configuração" (rota mapa/nova?prestador=&tipo=). É o único lugar de configuração de modelo (a antiga aba
-// "Modelos" foi unificada aqui em 10/11/2026).
+// "Modelos" foi unificada aqui em 10/11/2026; a aba "Regras" saiu no mesmo dia).
+// Camadas fixas (decisão do dono, 10/11/2026): Canal → Apólice → Padrão da empresa → Fallback geral. As condições de
+// cada empresa aparecem nessa ordem, com o número da prioridade em cinza (só informativo); o fallback geral aparece
+// como última linha só nas empresas sem padrão próprio. Canais transversais (camada `canais`: externo/VR/XLSX inativa)
+// ficam no topo; o que sobrar em `transversais` (FALLBACK) vai para "Regras de sistema", colapsado. Condições `legado`
+// da empresa (compat razão social, VR0001 1–9, inativas desde a 0044) também ficam colapsadas em "Regras de sistema".
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useMatch, useNavigate, useOutlet } from "react-router-dom";
 import { FiChevronDown, FiChevronRight, FiPlus, FiRefreshCw, FiSearch, FiAlertTriangle } from "react-icons/fi";
 import { configService } from "../../services/config";
-import { Badge, Estado } from "./componentes";
-import { STATUS_COMBINACAO, corCondicao, normalizarMapa, rotuloVersao } from "./mapaDados";
+import { Badge, Estado, RotuloCamada } from "./componentes";
+import { CAMADAS, STATUS_COMBINACAO, camadasDaLegenda, corCondicao, normalizarMapa, rotuloVersao } from "./mapaDados";
 import { formatarCnpj, mensagemErro } from "./utils";
 
 function PontoStatus({ status }) {
@@ -27,25 +32,27 @@ function textoVersao(comb) {
 }
 
 function LinhaCombinacao({ empresa, comb, selecionada }) {
+  const camada = comb.camada;
   const conteudo = (
     <>
       <PontoStatus status={comb.status} />
-      {comb.tipo === "padrao" ? <span className="cfg-mapa-padrao">Padrão</span> : <Badge cor={corCondicao(comb.tipo)}>{comb.rotulo}</Badge>}
-      <span className="cfg-mapa-versao cfg-mono" title={comb.regra ? `regra prioridade ${comb.regra.prioridade}` : undefined}>
+      {comb.tipo === "padrao" ? (
+        <span className="cfg-mapa-padrao">{camada?.chave === "fallback" ? CAMADAS.fallback.rotulo : CAMADAS.padrao.rotulo}</span>
+      ) : (
+        <Badge cor={corCondicao(comb.tipo)}>{comb.rotulo}</Badge>
+      )}
+      <span className="cfg-mapa-versao cfg-mono" title={camada ? `Camada ${camada.rotulo}` : undefined}>
         {textoVersao(comb)}
+        {camada?.prioridade != null && <small className="cfg-camada-num"> {camada.prioridade}</small>}
       </span>
     </>
   );
   if (!empresa || !TIPOS_COM_FICHA.has(comb.tipo)) {
-    // Compat por razão social / outras condições / transversais: só leitura, editar pela aba Regras (Avançado).
+    // Canais transversais e regras de sistema: só leitura (não têm ficha por empresa; a aba Regras foi removida).
     return (
-      <Link
-        to={comb.modelo?.id != null ? `/configuracao/regras?modelo=${comb.modelo.id}` : "/configuracao/regras"}
-        className="cfg-mapa-linha cfg-mapa-linha-ro"
-        title="Sem ficha no mapa: abrir na aba Regras (Avançado)"
-      >
+      <div className="cfg-mapa-linha cfg-mapa-linha-ro" title={`Camada ${camada?.rotulo || "?"} · sem ficha no mapa (só consulta)`}>
         {conteudo}
-      </Link>
+      </div>
     );
   }
   const destino = `/configuracao/mapa/${empresa.id}/${encodeURIComponent(comb.chave)}`;
@@ -56,7 +63,21 @@ function LinhaCombinacao({ empresa, comb, selecionada }) {
   );
 }
 
-function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova }) {
+/** Última linha informativa das empresas sem padrão próprio: as notas sem canal/apólice caem no fallback geral. */
+function LinhaFallback({ fallback }) {
+  return (
+    <div className="cfg-mapa-linha cfg-mapa-linha-info" title="Informativo: o fallback geral vale para todas as empresas sem padrão próprio">
+      <PontoStatus status="sem" />
+      <span>{CAMADAS.fallback.rotulo}</span>
+      <span className="cfg-mapa-versao cfg-mono">
+        {fallback?.modeloAtivo || fallback?.modelo ? rotuloVersao(fallback.modeloAtivo || fallback.modelo) : "—"}
+        {fallback?.camada?.prioridade != null && <small className="cfg-camada-num"> {fallback.camada.prioridade}</small>}
+      </span>
+    </div>
+  );
+}
+
+function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova, fallback }) {
   const temPadraoProprio = empresa.padrao && !empresa.semMapeamento;
   return (
     <div className={`cfg-mapa-empresa ${empresa.ativo ? "" : "cfg-inativa"}`}>
@@ -85,21 +106,7 @@ function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova }) {
       </div>
       {aberta && (
         <div className="cfg-mapa-filhos">
-          {empresa.padrao && (
-            <LinhaCombinacao
-              empresa={empresa}
-              comb={empresa.padrao}
-              selecionada={selecao.prestadorId === String(empresa.id) && selecao.condicao === empresa.padrao.chave}
-            />
-          )}
-          {!temPadraoProprio && (
-            <div className="cfg-mapa-vazio">
-              <FiAlertTriangle /> Sem padrão próprio: cai no modelo padrão geral (fallback).
-              <button type="button" className="cfg-link-btn" onClick={() => onNova(empresa, "padrao")}>
-                Criar padrão da empresa
-              </button>
-            </div>
-          )}
+          {/* Ordem das camadas: Canal → Apólice → Padrão da empresa (→ Fallback geral, só sem padrão próprio). */}
           {empresa.condicoes.map((c) => (
             <LinhaCombinacao
               key={c.chave}
@@ -108,6 +115,50 @@ function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova }) {
               selecionada={selecao.prestadorId === String(empresa.id) && selecao.condicao === c.chave}
             />
           ))}
+          {temPadraoProprio ? (
+            <LinhaCombinacao
+              empresa={empresa}
+              comb={empresa.padrao}
+              selecionada={selecao.prestadorId === String(empresa.id) && selecao.condicao === empresa.padrao.chave}
+            />
+          ) : (
+            <>
+              <div className="cfg-mapa-vazio">
+                <FiAlertTriangle /> Sem padrão próprio: as notas sem canal/apólice caem no fallback geral.
+                <button type="button" className="cfg-link-btn" onClick={() => onNova(empresa, "padrao")}>
+                  Criar padrão da empresa
+                </button>
+              </div>
+              {empresa.padrao ? (
+                <Link
+                  to={`/configuracao/mapa/${empresa.id}/${encodeURIComponent(empresa.padrao.chave)}`}
+                  className={`cfg-mapa-linha cfg-mapa-linha-info ${
+                    selecao.prestadorId === String(empresa.id) && selecao.condicao === empresa.padrao.chave ? "selecionada" : ""
+                  }`}
+                  title="Informativo: o fallback geral vale para todas as empresas sem padrão próprio (abre só para consulta)"
+                >
+                  <PontoStatus status="sem" />
+                  <span>{CAMADAS.fallback.rotulo}</span>
+                  <span className="cfg-mapa-versao cfg-mono">
+                    {textoVersao(empresa.padrao)}
+                    {empresa.padrao.camada?.prioridade != null && <small className="cfg-camada-num"> {empresa.padrao.camada.prioridade}</small>}
+                  </span>
+                </Link>
+              ) : (
+                <LinhaFallback fallback={fallback} />
+              )}
+            </>
+          )}
+          {empresa.sistema?.length > 0 && (
+            <details className="cfg-mapa-sistema">
+              <summary className="cfg-ajuda" title="Regras legadas/inativas desta empresa (compat por razão social removida): só consulta">
+                Regras de sistema ({empresa.sistema.length})
+              </summary>
+              {empresa.sistema.map((c) => (
+                <LinhaCombinacao key={c.chave} empresa={null} comb={c} selecionada={false} />
+              ))}
+            </details>
+          )}
           <button
             type="button"
             className="cfg-btn cfg-btn-contorno cfg-btn-sm cfg-mapa-nova"
@@ -134,7 +185,10 @@ export default function MapaEmissao() {
   );
 
   const [empresas, setEmpresas] = useState([]);
-  const [transversais, setTransversais] = useState([]);
+  const [canais, setCanais] = useState([]);
+  const [sistema, setSistema] = useState([]);
+  const [fallback, setFallback] = useState(null);
+  const [camadas, setCamadas] = useState(() => camadasDaLegenda(null));
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
@@ -159,7 +213,10 @@ export default function MapaEmissao() {
       const d = await configService.listarMapa();
       const m = normalizarMapa(d);
       setEmpresas(m.empresas);
-      setTransversais(m.transversais);
+      setCanais(m.canais);
+      setSistema(m.sistema);
+      setFallback(m.fallback);
+      setCamadas(m.camadas);
     } catch (e) {
       setErro(mensagemErro(e, "Falha ao carregar o mapa de emissão."));
     } finally {
@@ -232,7 +289,26 @@ export default function MapaEmissao() {
             <PontoStatus status="sem" /> sem mapeamento
           </span>
         </div>
+        <div className="cfg-mapa-ordem" title="Ordem fixa de avaliação: a primeira camada que casar define o modelo">
+          Ordem:{" "}
+          {camadas.map((c, i) => (
+            <span key={`${c.chave}-${i}`}>
+              {i > 0 && "→ "}
+              <RotuloCamada camada={c} />
+            </span>
+          ))}
+        </div>
         <Estado carregando={carregando} erro={erro} vazio={filtradas.length === 0} textoVazio="Nenhuma empresa encontrada.">
+          {canais.length > 0 && !busca.trim() && (
+            <div className="cfg-mapa-transversais cfg-mapa-canais">
+              <div className="cfg-mapa-transversais-titulo" title="Canais de entrada (externo, VR): primeira camada, valem para todas as empresas">
+                Canais — todas as empresas
+              </div>
+              {canais.map((c) => (
+                <LinhaCombinacao key={c.chave} empresa={null} comb={c} selecionada={false} />
+              ))}
+            </div>
+          )}
           {filtradas.map((e) => (
             <NoEmpresa
               key={e.id}
@@ -241,17 +317,18 @@ export default function MapaEmissao() {
               onAlternar={() => alternar(e.id)}
               selecao={selecao}
               onNova={abrirNova}
+              fallback={fallback}
             />
           ))}
-          {transversais.length > 0 && !busca.trim() && (
-            <div className="cfg-mapa-transversais">
-              <div className="cfg-mapa-transversais-titulo" title="Regras sem empresa: valem para todas (externo, VR, XLSX, fallback)">
-                Regras para todas as empresas
-              </div>
-              {transversais.map((c) => (
+          {sistema.length > 0 && !busca.trim() && (
+            <details className="cfg-mapa-transversais cfg-mapa-sistema">
+              <summary className="cfg-mapa-transversais-titulo" title="Regras sem empresa que não são canal (fallback geral, regras inativas de sistema): só consulta">
+                Regras de sistema ({sistema.length})
+              </summary>
+              {sistema.map((c) => (
                 <LinhaCombinacao key={c.chave} empresa={null} comb={c} selecionada={false} />
               ))}
-            </div>
+            </details>
           )}
         </Estado>
       </aside>

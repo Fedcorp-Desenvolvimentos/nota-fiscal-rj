@@ -2,18 +2,21 @@
 // É o ÚNICO lugar de configuração de modelo (decisão do dono, 10/11/2026: a antiga tela "Modelos" foi unificada aqui).
 // Cabeçalho (empresa, condição, regra, versão ativa) + seletor de versões (ativa e rascunhos) + formulário por grupos
 // (ativa = travada, "Clonar para editar"; rascunho = editável), ativar/desativar com as travas do backend,
-// regras da versão, dry-run, últimas notas, payload de exemplo e histórico (auditoria do modelo e da regra).
+// regras da versão, simular impacto (rascunho), dry-run, últimas notas, payload de exemplo e histórico (auditoria do
+// modelo e da regra). Camadas fixas (10/11/2026): a regra aparece pela camada ("Apólice", "Padrão da empresa", "Canal",
+// "Fallback geral") com o número em cinza, só informativo; não há mais link para a aba Regras (removida).
 import { useCallback, useEffect, useState } from "react";
-import { Link, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
 import { FiCopy, FiPlay, FiCheckCircle, FiAlertTriangle, FiFileText, FiPower, FiPlus } from "react-icons/fi";
 import { configService } from "../../services/config";
-import { Badge, Estado, JsonView, Campo } from "./componentes";
+import { Badge, Estado, JsonView, Campo, RotuloCamada } from "./componentes";
 import DryRunPainel from "./DryRunPainel";
+import SimularImpacto from "./SimularImpacto";
 import AcaoModeloModal from "./AcaoModeloModal";
 import EditorParametros from "./EditorParametros";
 import HistoricoFicha from "./HistoricoFicha";
-import { corCondicao, nomeCampo, normalizarCombinacao, rotuloVersao } from "./mapaDados";
+import { camadaDe, corCondicao, nomeCampo, normalizarCombinacao, rotuloVersao } from "./mapaDados";
 import { comoLista, formatarCnpj, formatarData, mensagemErro } from "./utils";
 
 function normalizarFicha(d, condicaoUrl) {
@@ -178,15 +181,13 @@ export default function MapaFicha() {
                     <span className="cfg-mono">{formatarCnpj(cnpjEmpresa)}</span>
                     {ficha.tipo === "padrao" ? <Badge>Padrão da empresa</Badge> : <Badge cor={corCondicao(ficha.tipo)}>{ficha.rotulo}</Badge>}
                     {ficha.regra ? (
-                      <Link
-                        to={`/configuracao/regras?modelo=${(typeof ficha.regra.modelo === "object" ? ficha.regra.modelo?.id : ficha.regra.modelo) ?? ficha.modelo?.id ?? ""}`}
-                        title={`${ficha.regra.descricao || ""}${ficha.regra.condicoes ? ` · ${ficha.regra.condicoes}` : ""} — consultar em Avançado → Regras`}
+                      <Badge
+                        cor={ficha.regra.ativo === false ? "amarelo" : "neutro"}
+                        title={`${ficha.regra.descricao || ""}${ficha.regra.condicoes ? ` · ${ficha.regra.condicoes}` : ""}`}
                       >
-                        <Badge cor={ficha.regra.ativo === false ? "amarelo" : "neutro"}>
-                          regra prioridade {ficha.regra.prioridade}
-                          {ficha.regra.ativo === false ? " (inativa)" : ""}
-                        </Badge>
-                      </Link>
+                        <RotuloCamada camada={ficha.camada} prefixo="camada " />
+                        {ficha.regra.ativo === false ? " (inativa)" : ""}
+                      </Badge>
                     ) : (
                       <Badge cor="amarelo">sem regra</Badge>
                     )}
@@ -341,14 +342,12 @@ export default function MapaFicha() {
               </div>
             )}
 
-            {/* Regras desta versão (consulta; ajuste fino em Avançado → Regras) */}
+            {/* Regras desta versão (só consulta: a camada é definida pelo Mapa na criação) */}
             {modelo && (
               <div className="cfg-card">
                 <div className="cfg-card-titulo">
                   <h3>Regras desta versão</h3>
-                  <Link to={`/configuracao/regras?modelo=${modelo.id}`} className="cfg-btn cfg-btn-neutro cfg-btn-sm" title="Ajuste fino (Avançado)">
-                    Ajuste fino em Avançado → Regras
-                  </Link>
+                  <small className="cfg-ajuda">Ordem fixa: Canal → Apólice → Padrão da empresa → Fallback geral</small>
                 </div>
                 {(modelo.regras || []).length === 0 ? (
                   <div className="cfg-aviso cfg-aviso-alerta">Sem regras: esta versão não será escolhida pelo resolvedor mesmo se ativada.</div>
@@ -357,7 +356,7 @@ export default function MapaFicha() {
                     <table className="cfg-tabela">
                       <thead>
                         <tr>
-                          <th>Prioridade</th>
+                          <th>Camada</th>
                           <th>Condições</th>
                           <th>Descrição</th>
                           <th>Status</th>
@@ -366,7 +365,9 @@ export default function MapaFicha() {
                       <tbody>
                         {modelo.regras.map((r) => (
                           <tr key={r.id} className={r.ativo ? "" : "cfg-inativa"}>
-                            <td>{r.prioridade}</td>
+                            <td>
+                              <RotuloCamada camada={camadaDe({ camada: r.camada, regra: r })} />
+                            </td>
                             <td className="cfg-mono">{r.condicoes || "—"}</td>
                             <td>{r.descricao || "—"}</td>
                             <td>
@@ -384,6 +385,20 @@ export default function MapaFicha() {
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Simular impacto: só para rascunho (a versão ativa já emite) */}
+            {modelo && !modelo.ativo && !bloqueadoFallback && (
+              <div className="cfg-card">
+                <div className="cfg-card-titulo">
+                  <h3>Simular impacto — {rotuloVersao(modelo)}</h3>
+                </div>
+                <small className="cfg-ajuda">
+                  Quantas das últimas notas mudariam de modelo se este rascunho fosse ativado (não grava nada).
+                </small>
+                {sujo && <div className="cfg-aviso cfg-aviso-alerta">Há alterações não salvas: a simulação usa a versão salva no servidor.</div>}
+                <SimularImpacto modeloId={modelo.id} />
               </div>
             )}
 
@@ -467,7 +482,7 @@ export default function MapaFicha() {
             <HistoricoFicha
               alvos={[
                 { entidade: "modelo", id: modelo?.id ?? null, rotulo: modelo ? `modelo ${rotuloVersao(modelo)}` : "" },
-                { entidade: "regra", id: regraId, rotulo: regraId != null ? `regra ${regraId}` : "" },
+                { entidade: "regra", id: regraId, rotulo: regraId != null ? `regra ${regraId} (camada ${ficha.camada?.rotulo || "?"})` : "" },
               ]}
             />
           </>

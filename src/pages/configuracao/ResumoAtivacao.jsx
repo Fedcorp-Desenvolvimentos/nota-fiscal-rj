@@ -1,8 +1,19 @@
 // Resumo pós-ativação (resposta 200 de POST modelos/{id}/ativar/): versões desativadas, diff de regras
 // (calculado contra o estado anterior) e simulação nas últimas 200 notas.
-import { Badge, Modal } from "./componentes";
+// Camadas fixas (10/11/2026): cada regra aparece pela camada ("Apólice", "Padrão da empresa"...) com o número em cinza.
+import { Badge, Modal, RotuloCamada } from "./componentes";
+import { camadaDe } from "./mapaDados";
 
-const rotuloRegra = (r) => `prioridade ${r.prioridade}${r.condicoes ? ` · ${r.condicoes}` : ""}${r.descricao ? ` · ${r.descricao}` : ""}`;
+const camadaRegra = (r) => camadaDe({ camada: r?.camada, regra: r });
+function RotuloRegra({ r }) {
+  return (
+    <>
+      <RotuloCamada camada={camadaRegra(r)} />
+      {r.condicoes ? ` · ${r.condicoes}` : ""}
+      {r.descricao ? ` · ${r.descricao}` : ""}
+    </>
+  );
+}
 const valor = (v) => (v === null || v === undefined || v === "" ? "∅" : String(v));
 
 export default function ResumoAtivacao({ resumo, onFechar }) {
@@ -52,14 +63,18 @@ export default function ResumoAtivacao({ resumo, onFechar }) {
         {adicionadas.length > 0 && (
           <ul className="cfg-lista-detalhes">
             {adicionadas.map((r) => (
-              <li key={`a${r.id}`}>+ {rotuloRegra(r)}</li>
+              <li key={`a${r.id}`}>
+                + <RotuloRegra r={r} />
+              </li>
             ))}
           </ul>
         )}
         {removidas.length > 0 && (
           <ul className="cfg-lista-detalhes">
             {removidas.map((r) => (
-              <li key={`r${r.id}`}>− {rotuloRegra(r)}</li>
+              <li key={`r${r.id}`}>
+                − <RotuloRegra r={r} />
+              </li>
             ))}
           </ul>
         )}
@@ -68,7 +83,7 @@ export default function ResumoAtivacao({ resumo, onFechar }) {
             <table className="cfg-tabela">
               <thead>
                 <tr>
-                  <th>Prioridade</th>
+                  <th>Camada</th>
                   <th>Campo</th>
                   <th>Antes</th>
                   <th>Agora</th>
@@ -77,8 +92,10 @@ export default function ResumoAtivacao({ resumo, onFechar }) {
               <tbody>
                 {alteradas.flatMap((r) =>
                   Object.entries(r.campos || {}).map(([campo, v]) => (
-                    <tr key={`${r.prioridade}-${campo}`} className="cfg-diff-alterado">
-                      <td>{r.prioridade}</td>
+                    <tr key={`${r.id_alvo ?? r.prioridade}-${campo}`} className="cfg-diff-alterado">
+                      <td>
+                        <RotuloCamada camada={camadaRegra(r)} />
+                      </td>
                       <td className="cfg-mono">{campo}</td>
                       <td className="cfg-mono">{valor(v?.atual)}</td>
                       <td className="cfg-mono">{valor(v?.alvo)}</td>

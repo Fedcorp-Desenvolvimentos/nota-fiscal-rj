@@ -8,9 +8,22 @@ function corpoErro(error) {
   return null;
 }
 
-/** Código de erro do backend (ex.: "modelo_ativo_imutavel", "conflito_prioridade", "pipeline"). */
+/** Código de erro do backend (ex.: "modelo_ativo_imutavel", "conflito_condicao", "pipeline"). */
 export function codigoErro(error) {
   return corpoErro(error)?.codigo || null;
+}
+
+/**
+ * 409 de ativação por regra com as mesmas condições de uma regra efetiva de outro modelo (R85).
+ * `conflito_condicao` é o código atual; `conflito_prioridade` (antes da 0044) fica como alias de compatibilidade.
+ */
+export const CODIGOS_CONFLITO_CONDICAO = new Set(["conflito_condicao", "conflito_prioridade"]);
+export const MENSAGEM_CONFLITO_CONDICAO =
+  "Já existe uma regra efetiva com as mesmas condições (empresa/apólice); ajuste ou desative a regra existente.";
+
+/** True se o erro é o conflito de condições da ativação (código atual ou o alias antigo). */
+export function ehConflitoCondicao(error) {
+  return CODIGOS_CONFLITO_CONDICAO.has(codigoErro(error));
 }
 
 /** Códigos de trava que aceitam repetir a chamada com `confirmar: true`. */
@@ -26,7 +39,7 @@ export function mensagemBackend(error, padrao = "") {
   return corpoErro(error)?.mensagem || padrao;
 }
 
-/** erro.campos como lista [[chave, "mensagens"]] (ex.: {"regra 812 (prioridade 47)": [...]}). */
+/** erro.campos como lista [[chave, "mensagens"]] (ex.: {"regra 812": ["..."]}). */
 export function listaCampos(error) {
   const campos = corpoErro(error)?.campos;
   if (!campos || typeof campos !== "object") return [];

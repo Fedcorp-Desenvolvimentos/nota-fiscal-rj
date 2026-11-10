@@ -5,18 +5,52 @@
 //                   diferem do modelo base em destaque.
 //   3. Ativar    → resumo, "Simular impacto" (regras/simular/ com ativar_modelos=[id]), "Ativar agora" (travas +
 //                   ResumoAtivacao) ou "Deixar como rascunho". Ao terminar, abre a ficha da combinação.
+// Camadas fixas (10/11/2026): não há campo de prioridade; a camada vem do tipo da condição (apólice → Apólice,
+// padrão → Padrão da empresa, canal → Canal) e o backend escolhe a prioridade. O número aparece só em cinza.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
-import { FiArrowLeft, FiArrowRight, FiCheckCircle, FiPlay, FiSave } from "react-icons/fi";
+import { FiArrowLeft, FiArrowRight, FiCheckCircle, FiLayers, FiPlay, FiSave } from "react-icons/fi";
 import { configService } from "../../services/config";
-import { Badge, Campo, CampoMotivo, ErrosBackend, Estado } from "./componentes";
+import { Badge, Campo, CampoMotivo, ErrosBackend, Estado, RotuloCamada } from "./componentes";
 import DryRunPainel from "./DryRunPainel";
+import SimularImpacto from "./SimularImpacto";
 import EditorParametros from "./EditorParametros";
 import AcaoModeloModal from "./AcaoModeloModal";
 import { agruparModelos } from "./modelosDados";
-import { CANAIS, chaveCondicao, normalizarApolice, opcoesModeloBase, rotuloCondicao, rotuloVersao } from "./mapaDados";
-import { codigoErro, errosDeCampo, formatarCnpj, mensagemErro, notificarEscrita, validarMotivo } from "./utils";
+import { CANAIS, camadaDe, chaveCondicao, normalizarApolice, opcoesModeloBase, rotuloCondicao, rotuloVersao } from "./mapaDados";
+import {
+  MENSAGEM_CONFLITO_CONDICAO,
+  codigoErro,
+  ehConflitoCondicao,
+  errosDeCampo,
+  formatarCnpj,
+  mensagemErro,
+  notificarEscrita,
+  validarMotivo,
+} from "./utils";
+
+/** Texto curto do passo 1: em que camada a condição escolhida entra e o que ela vence. */
+function ExplicacaoCamada({ tipo, valor }) {
+  const camada = camadaDe({ tipo });
+  const canal = CANAIS.find((c) => c.valor === valor)?.rotulo || "do canal";
+  const textos = {
+    apolice: "Vale para as notas desta empresa com esta apólice; perde só para os canais (VR/externo).",
+    padrao: "Vale para toda nota desta empresa sem canal nem apólice própria; hoje ela cai no fallback geral.",
+    canal_empresa: `Vale para as notas ${canal} desta empresa; vence o canal geral, a apólice e o padrão da empresa.`,
+  };
+  return (
+    <div className="cfg-grid-largo">
+      <div className="cfg-aviso">
+        <FiLayers />
+        <span>
+          Esta condição entra na camada <strong>{camada.rotulo}</strong>. {textos[camada.chave] || ""} Apólices vencem o padrão
+          da empresa; o padrão vence o fallback geral. A ordem é fixa (não há prioridade para escolher).
+        </span>
+      </div>
+    </div>
+  );
+}
 
 const PASSOS = ["Condição", "Parâmetros", "Ativar"];
 
@@ -69,9 +103,6 @@ export default function NovaConfiguracaoWizard() {
   const [schema, setSchema] = useState(null);
   const [erroSchema, setErroSchema] = useState("");
   const [sujo, setSujo] = useState(false);
-  const [simulacao, setSimulacao] = useState(null);
-  const [erroSimulacao, setErroSimulacao] = useState(null);
-  const [simulando, setSimulando] = useState(false);
   const [acao, setAcao] = useState(null);
   const [ativado, setAtivado] = useState(false);
 
@@ -88,7 +119,6 @@ export default function NovaConfiguracaoWizard() {
     setPasso(0);
     setCriado(null);
     setRascunho(null);
-    setSimulacao(null);
     setAtivado(false);
     setValor("");
     setMotivo("");
@@ -194,21 +224,9 @@ export default function NovaConfiguracaoWizard() {
   };
 
   const conhecidosCriar = ["motivo", "base_modelo_id", "codigo_sugerido", "prestador_id", ...(tipo !== "padrao" ? ["condicao"] : [])];
-  const duplicada = codigoErro(erroCriar) === "condicao_duplicada" || erroCriar?.response?.status === 409;
-
-  // ---- passo 3: simular ----
-  const simular = async () => {
-    setSimulando(true);
-    setErroSimulacao(null);
-    try {
-      setSimulacao(await configService.simularRegras(200, { ativar_modelos: [rascunho.id] }));
-    } catch (e) {
-      setErroSimulacao(e);
-      enqueueSnackbar(mensagemErro(e, "Falha na simulação."), { variant: "error" });
-    } finally {
-      setSimulando(false);
-    }
-  };
+  // 409 conflito_condicao (alias conflito_prioridade) é da ativação; aqui só por garantia, com texto próprio.
+  const conflitoCondicao = ehConflitoCondicao(erroCriar);
+  const duplicada = !conflitoCondicao && (codigoErro(erroCriar) === "condicao_duplicada" || erroCriar?.response?.status === 409);
 
   const irParaFicha = () => {
     const pid = empresa?.id ?? empresaId;
@@ -220,6 +238,10 @@ export default function NovaConfiguracaoWizard() {
   const rotuloCond = criado
     ? rotuloCondicao(criado.condicao?.tipo, criado.condicao?.valor)
     : rotuloCondicao(tipo, valorEnviado);
+  // Camada da regra criada: `camada` do backend (na regra ou na condição) ou deduzida do tipo da condição.
+  const camadaCriada = criado
+    ? camadaDe({ camada: criado.regra?.camada ?? criado.condicao?.camada, tipo: criado.condicao?.tipo ?? tipo, regra: criado.regra })
+    : null;
 
   return (
     <div className="cfg-card">
@@ -247,9 +269,9 @@ export default function NovaConfiguracaoWizard() {
           {criado ? (
             <div className="cfg-aviso">
               <span>
-                Rascunho <strong>{rotuloVersao(criado.modelo)}</strong> já criado para <strong>{rotuloCond}</strong> (regra prioridade{" "}
-                {criado.regra?.prioridade ?? "?"}, inativa até ativar). Para outra condição, saia e comece uma nova configuração;
-                este rascunho fica no mapa.
+                Rascunho <strong>{rotuloVersao(criado.modelo)}</strong> já criado para <strong>{rotuloCond}</strong> (camada{" "}
+                <RotuloCamada camada={camadaCriada} />, regra inativa até ativar). Para outra condição, saia e comece uma nova
+                configuração; este rascunho fica no mapa.
               </span>
             </div>
           ) : (
@@ -262,6 +284,7 @@ export default function NovaConfiguracaoWizard() {
               </div>
 
               <ErrosBackend erro={erroCriar} conhecidos={conhecidosCriar} padrao="Falha ao criar a configuração.">
+                {conflitoCondicao && <div style={{ marginTop: 4 }}>{MENSAGEM_CONFLITO_CONDICAO}</div>}
                 {duplicada && chaveFicha && (
                   <div style={{ marginTop: 4 }}>
                     Esta condição já tem modelo/regra para a empresa: edite o rascunho existente ou clone a versão ativa na ficha.{" "}
@@ -325,14 +348,10 @@ export default function NovaConfiguracaoWizard() {
                     </select>
                   </Campo>
                 )}
-                {tipo === "padrao" && (
+                <ExplicacaoCamada tipo={tipo} valor={valorEnviado} />
+                {tipo === "padrao" && empresa?.padrao?.modelo && (
                   <div className="cfg-grid-largo">
-                    <div className="cfg-aviso">
-                      <span>
-                        Cria o padrão da empresa por CNPJ (faixa 450–499). Hoje ela cai no modelo padrão geral (fallback
-                        {empresa?.padrao?.modelo ? ` ${rotuloVersao(empresa.padrao.modelo)}` : ""}).
-                      </span>
-                    </div>
+                    <small className="cfg-ajuda">Fallback geral usado hoje por esta empresa: {rotuloVersao(empresa.padrao.modelo)}.</small>
                   </div>
                 )}
                 <div className="cfg-grid-largo">
@@ -468,11 +487,14 @@ export default function NovaConfiguracaoWizard() {
                 <td>{rotuloCond}</td>
               </tr>
               <tr>
-                <th>Regra</th>
+                <th>Camada</th>
                 <td>
                   {criado?.regra ? (
                     <>
-                      prioridade <strong>{criado.regra.prioridade}</strong> · <span className="cfg-mono">{criado.regra.condicoes || "—"}</span>{" "}
+                      <strong>
+                        <RotuloCamada camada={camadaCriada} />
+                      </strong>{" "}
+                      · <span className="cfg-mono">{criado.regra.condicoes || "—"}</span>{" "}
                       {ativado ? <Badge cor="verde">ativa</Badge> : <Badge cor="amarelo">inativa até ativar</Badge>}
                     </>
                   ) : (
@@ -494,44 +516,7 @@ export default function NovaConfiguracaoWizard() {
             </tbody>
           </table>
 
-          <div className="cfg-acoes" style={{ marginTop: 12 }}>
-            <button type="button" className="cfg-btn cfg-btn-contorno" onClick={simular} disabled={simulando || ativado}>
-              <FiPlay /> {simulando ? "Simulando…" : "Simular impacto (últimas 200 notas)"}
-            </button>
-          </div>
-          <ErrosBackend erro={erroSimulacao} padrao="Falha na simulação." />
-          {simulacao && (
-            <div className="cfg-aviso">
-              <div>
-                <strong>
-                  {simulacao.mudariam ?? 0} de {simulacao.total ?? 0} notas recentes mudariam de modelo com esta ativação.
-                </strong>
-                {(simulacao.resumo || []).length > 0 && (
-                  <ul className="cfg-lista-detalhes">
-                    {simulacao.resumo.map((r, i) => (
-                      <li key={i}>
-                        {r.atual || "nenhum"} → {r.proposto || "nenhum"}: {r.quantidade}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {(simulacao.sem_modelo_proposto ?? 0) > 0 && <div>Sem modelo após ativar: {simulacao.sem_modelo_proposto}</div>}
-                {(simulacao.notas || []).length > 0 && (
-                  <details>
-                    <summary>Notas afetadas ({simulacao.notas.length})</summary>
-                    <ul className="cfg-lista-detalhes">
-                      {simulacao.notas.slice(0, 50).map((n) => (
-                        <li key={n.id} className="cfg-mono">
-                          {n.id_integracao || n.id} · fatura {n.fatura || "—"} · apólice {n.apolice || "—"} ·{" "}
-                          {rotuloVersao(n.atual)} → {rotuloVersao(n.proposto)}
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </div>
-            </div>
-          )}
+          <SimularImpacto modeloId={rascunho.id} desabilitado={ativado} />
 
           <div className="cfg-acoes cfg-wizard-rodape">
             <button type="button" className="cfg-btn cfg-btn-neutro" onClick={() => setPasso(1)} disabled={ativado}>

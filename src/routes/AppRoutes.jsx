@@ -15,7 +15,6 @@ import Configuracao from "../pages/configuracao/Configuracao";
 import Prestadores from "../pages/configuracao/Prestadores";
 import RedirecionarModelo from "../pages/configuracao/RedirecionarModelo";
 import NovaConfiguracaoWizard from "../pages/configuracao/NovaConfiguracaoWizard";
-import Regras from "../pages/configuracao/Regras";
 import Auditoria from "../pages/configuracao/Auditoria";
 import MapaEmissao from "../pages/configuracao/MapaEmissao";
 import MapaFicha from "../pages/configuracao/MapaFicha";
@@ -79,7 +78,8 @@ export const AppRoutes = () => {
           {/* Antiga aba Modelos: unificada na ficha do Mapa (10/11/2026); rotas mantidas só como redirect. */}
           <Route path="modelos" element={<Navigate to="/configuracao/mapa" replace />} />
           <Route path="modelos/:id" element={<RedirecionarModelo />} />
-          <Route path="regras" element={<Regras />} />
+          {/* Antiga aba Regras: removida em 10/11/2026 (camadas fixas definidas pelo Mapa); só redirect. */}
+          <Route path="regras" element={<Navigate to="/configuracao/mapa" replace />} />
           <Route path="auditoria" element={<Auditoria />} />
         </Route>
       </Route>

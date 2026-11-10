@@ -250,13 +250,6 @@
 .cfg-lista-detalhes { margin: 6px 0 12px 18px; font-size: 13px; color: #334155; display: flex; flex-direction: column; gap: 4px; }
 .cfg-resumo h4 { margin: 14px 0 6px; font-size: 14px; color: #0f172a; }
 
-/* Abas: separador do grupo "Avançado" */
-.cfg-abas-grupo {
-  display: inline-flex; align-items: center; margin-left: 12px; padding: 0 6px 0 14px;
-  border-left: 1px solid #e2e8f0; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
-  text-transform: uppercase; color: #94a3b8; white-space: nowrap;
-}
-
 /* Mapa de emissão: árvore à esquerda, ficha à direita */
 .cfg-mapa { display: grid; grid-template-columns: minmax(280px, 340px) 1fr; gap: 20px; align-items: start; }
 .cfg-mapa-arvore {
@@ -352,3 +345,10 @@
 
 /* Campo que difere do modelo base (wizard, passo 2) */
 .cfg-campo-diferente { background: #fffbeb; outline: 2px solid #fde68a; border-radius: 6px; padding: 4px; }
+
+/* Camadas fixas (10/11/2026): rótulo da camada + número da prioridade em cinza, só informativo */
+.cfg-camada { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.cfg-camada-num { color: #94a3b8; font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.cfg-mapa-linha-info { cursor: default; color: #64748b; font-style: italic; }
+.cfg-mapa-ordem { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; color: #64748b; padding: 2px 6px 6px; }
+.cfg-mapa-sistema > summary { cursor: pointer; list-style: revert; }
