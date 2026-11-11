@@ -591,17 +591,6 @@ function getTomadorCodigoFromNota(nota) {
   return "";
 }
 
-function getFilenameFromContentDisposition(cd) {
-  if (!cd) return null;
-
-  const m1 = /filename\*=UTF-8''([^;]+)/i.exec(cd);
-  if (m1?.[1]) return decodeURIComponent(m1[1].replace(/["']/g, ""));
-
-  const m2 = /filename="?([^"]+)"?/i.exec(cd);
-  if (m2?.[1]) return m2[1];
-
-  return null;
-}
 
 function extFromContentType(ct) {
   const t = String(ct || "").toLowerCase();
@@ -1762,11 +1751,7 @@ export default function Consultas() {
 
         const ct =
           resp?.headers?.["content-type"] || resp?.headers?.["Content-Type"];
-        const cd =
-          resp?.headers?.["content-disposition"] ||
-          resp?.headers?.["Content-Disposition"];
 
-        const fromHeader = getFilenameFromContentDisposition(cd);
         const ext = extFromContentType(ct);
 
         const safeEmit = String(emitenteNome || "emitente")
@@ -1781,7 +1766,8 @@ export default function Consultas() {
             ? `NF_FATURA_${safeFat}.zip`
             : `NF_FATURA_${safeFat}.pdf`;
 
-        const filename = fromHeader || fallbackName;
+        // Nome histórico (NF_FATURA_…): o do Content-Disposition só passou a ser legível com front e API na mesma origem.
+        const filename = fallbackName;
 
         forceDownloadBlob({ blob: resp.data, filename });
 
@@ -1839,17 +1825,14 @@ export default function Consultas() {
 
       const ct =
         resp?.headers?.["content-type"] || resp?.headers?.["Content-Type"];
-      const cd =
-        resp?.headers?.["content-disposition"] ||
-        resp?.headers?.["Content-Disposition"];
 
-      const fromHeader = getFilenameFromContentDisposition(cd);
       const ext = extFromContentType(ct) || "pdf";
 
       const safeId = String(idIntegracao)
         .replace(/[^\w.-]+/g, "_")
         .slice(0, 40);
-      const filename = fromHeader || `nfse_${safeId}.${ext}`;
+      // Nome histórico (nfse_…), igual ao de antes da mesma origem; o Content-Disposition é ignorado de propósito.
+      const filename = `nfse_${safeId}.${ext}`;
 
       forceDownloadBlob({ blob: resp.data, filename });
       enqueueSnackbar("Download iniciado!", { variant: "success" });
