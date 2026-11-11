@@ -1,6 +1,6 @@
 // Componentes compartilhados da página Configuração.
 import { useEffect, useMemo, useState } from "react";
-import { FiX, FiAlertTriangle } from "react-icons/fi";
+import { FiX, FiAlertTriangle, FiInfo } from "react-icons/fi";
 import { diffObjetos, jsonOrdenado, mensagemErro, valorCurto } from "./utils";
 
 /** Modal simples (overlay + painel). `largo` para conteúdos extensos. */
@@ -30,13 +30,14 @@ export function Modal({ titulo, aberto, onFechar, children, rodape, largo = fals
 }
 
 /** Campo de formulário com rótulo, ajuda e erro do backend. */
-export function Campo({ label, erro, ajuda, children, obrigatorio = false }) {
+export function Campo({ label, erro, ajuda, info, children, obrigatorio = false }) {
   return (
     <div className={`cfg-campo ${erro ? "cfg-campo-erro" : ""}`}>
       {label && (
         <label>
           {label}
           {obrigatorio && <span className="cfg-obrigatorio"> *</span>}
+          <Info texto={info} />
         </label>
       )}
       {children}
@@ -49,13 +50,13 @@ export function Campo({ label, erro, ajuda, children, obrigatorio = false }) {
 /** Campo "motivo" obrigatório em toda escrita (vai para a auditoria). */
 export function CampoMotivo({ valor, onChange, erro, placeholder }) {
   return (
-    <Campo label="Motivo da alteração" obrigatorio erro={erro} ajuda="Registrado na auditoria.">
+    <Campo label="Motivo" obrigatorio erro={erro}>
       <textarea
         className="cfg-input"
         rows={2}
         value={valor}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder || "Ex.: ajuste solicitado pelo fiscal em 10/11"}
+        placeholder={placeholder || "Ex.: pedido do fiscal"}
       />
     </Campo>
   );
@@ -172,7 +173,7 @@ export function DiffLadoALado({ a, b, linhas, rotuloA = "Versão ativa", rotuloB
     <div className="cfg-diff">
       <div className="cfg-diff-topo">
         <span>
-          {qtdDif === 0 ? "Nenhuma diferença." : `${qtdDif} chave(s) diferente(s).`}
+          {qtdDif === 0 ? "Sem diferenças." : `${qtdDif} diferença(s)`}
         </span>
         <label className="cfg-check">
           <input type="checkbox" checked={soDiferencas} onChange={(e) => setSoDiferencas(e.target.checked)} />
@@ -224,62 +225,120 @@ export function ListaDetalhes({ itens }) {
   );
 }
 
-/**
- * Alerta com TODA a informação do erro do backend ({erro:{codigo, mensagem, campos}}): mensagem principal e,
- * em "Outros erros", as chaves de `campos` que não têm campo próprio na tela (`conhecidos`).
- * Erro sem corpo do contrato (rede, 5xx com HTML) mostra a mensagem genérica de `mensagemErro`.
- */
-export function ErrosBackend({ erro, conhecidos = [], padrao = "Falha na operação.", children }) {
+/** Erro do backend em uma linha (mensagem + primeiro campo inválido). */
+export function ErrosBackend({ erro, padrao = "Falha na operação." }) {
   if (!erro) return null;
-  const corpo = erro?.response?.data?.erro;
-  const status = erro?.response?.status;
-  const mensagem = corpo?.mensagem || mensagemErro(erro, padrao);
-  const conhecidosSet = new Set(conhecidos);
-  const outros = corpo?.campos && typeof corpo.campos === "object"
-    ? Object.entries(corpo.campos).filter(([k]) => !conhecidosSet.has(k))
-    : [];
   return (
     <div className="cfg-aviso cfg-aviso-perigo" role="alert">
-      <FiAlertTriangle />
-      <div>
-        <strong>{mensagem}</strong>
-        {(corpo?.codigo || status) && (
-          <small className="cfg-ajuda cfg-mono"> ({[status, corpo?.codigo].filter(Boolean).join(" · ")})</small>
-        )}
-        {outros.length > 0 && (
-          <>
-            <div style={{ marginTop: 4 }}>Outros erros:</div>
-            <ul className="cfg-lista-detalhes">
-              {outros.map(([k, v]) => (
-                <li key={k}>
-                  <span className="cfg-mono">{k === "__all__" || k === "non_field_errors" ? "geral" : k}</span>:{" "}
-                  {Array.isArray(v) ? v.map((m) => (typeof m === "string" ? m : JSON.stringify(m))).join(" ") : typeof v === "string" ? v : JSON.stringify(v)}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {children}
-      </div>
+      <FiAlertTriangle /> <span>{mensagemErro(erro, padrao)}</span>
+    </div>
+  );
+}
+
+/** Ícone (i) com tooltip nativo: ajuda e chave do JSON ficam aqui, nunca como texto corrido. */
+export function Info({ texto }) {
+  if (!texto) return null;
+  return (
+    <span className="cfg-info" title={texto} aria-label={texto} tabIndex={0}>
+      <FiInfo size={12} />
+    </span>
+  );
+}
+
+/** Painel lateral (histórico). */
+export function Drawer({ titulo, aberto, onFechar, children }) {
+  useEffect(() => {
+    if (!aberto) return undefined;
+    const esc = (e) => e.key === "Escape" && onFechar?.();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [aberto, onFechar]);
+  if (!aberto) return null;
+  return (
+    <div className="cfg-overlay cfg-overlay-drawer" onMouseDown={(e) => e.target === e.currentTarget && onFechar?.()}>
+      <aside className="cfg-drawer" role="dialog" aria-modal="true">
+        <div className="cfg-modal-header">
+          <h3>{titulo}</h3>
+          <button type="button" className="cfg-icon-btn" onClick={onFechar} aria-label="Fechar">
+            <FiX size={18} />
+          </button>
+        </div>
+        <div className="cfg-drawer-corpo">{children}</div>
+      </aside>
     </div>
   );
 }
 
 /**
- * Rótulo da camada da regra ("Apólice", "Padrão da empresa", "Canal", "Fallback geral") com o número da prioridade em
- * cinza pequeno, só informativo (decisão do dono, 10/11/2026: prioridade não é mais editável nem exposta como conceito).
- * props: camada = {rotulo, prioridade} (ver mapaDados.camadaDe); semNumero oculta o número.
+ * Modal curto só com motivo (criar padrão, descartar, desativar/reativar apólice).
+ * `confirmaveis`: códigos 409 que mostram a mensagem do backend e "<botao> mesmo assim" (repete com confirmar=true).
+ * onConfirmar(motivo, confirmar).
  */
-export function RotuloCamada({ camada, semNumero = false, prefixo = "" }) {
-  if (!camada) return null;
+export function MotivoModal({ aberto, titulo, botao = "Confirmar", perigo = false, confirmaveis, onFechar, onConfirmar }) {
+  const [motivo, setMotivo] = useState("");
+  const [erro, setErro] = useState("");
+  const [confirmacao, setConfirmacao] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  useEffect(() => {
+    setMotivo("");
+    setErro("");
+    setConfirmacao("");
+  }, [aberto]);
+  const confirmar = async (forcar = false) => {
+    const m = motivo.trim();
+    if (m.length < 5) {
+      setErro("Mínimo 5 caracteres.");
+      return;
+    }
+    setEnviando(true);
+    setErro("");
+    try {
+      await onConfirmar(m, forcar);
+    } catch (e) {
+      const corpo = e?.response?.data?.erro;
+      if (!forcar && confirmaveis?.includes(corpo?.codigo)) setConfirmacao(corpo?.mensagem || "Confirma?");
+      else setErro(mensagemErro(e, "Falha na operação."));
+    } finally {
+      setEnviando(false);
+    }
+  };
   return (
-    <span
-      className="cfg-camada"
-      title={`Camada ${camada.rotuloBackend || camada.rotulo}${camada.prioridade != null ? ` (prioridade interna ${camada.prioridade}, só informativa)` : ""}`}
+    <Modal
+      aberto={aberto}
+      titulo={titulo}
+      onFechar={() => !enviando && onFechar?.()}
+      rodape={
+        <>
+          <button type="button" className="cfg-btn cfg-btn-neutro" onClick={onFechar} disabled={enviando}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className={`cfg-btn ${perigo ? "cfg-btn-perigo" : "cfg-btn-primario"}`}
+            onClick={() => confirmar(!!confirmacao)}
+            disabled={enviando}
+          >
+            {enviando ? "…" : confirmacao ? `${botao} mesmo assim` : botao}
+          </button>
+        </>
+      }
     >
-      {prefixo}
-      {camada.rotulo}
-      {!semNumero && camada.prioridade != null && <small className="cfg-camada-num">{camada.prioridade}</small>}
-    </span>
+      <CampoMotivo
+        valor={motivo}
+        onChange={(v) => {
+          setMotivo(v);
+          setConfirmacao("");
+        }}
+        erro={erro.length < 40 ? erro : ""}
+      />
+      {confirmacao && <div className="cfg-aviso cfg-aviso-alerta">{confirmacao}</div>}
+      {erro.length >= 40 && <div className="cfg-aviso cfg-aviso-perigo">{erro}</div>}
+    </Modal>
   );
+}
+
+/** Ponto de estado do mapa: verde publicado, laranja rascunho, cinza desligado. */
+export function Ponto({ estado }) {
+  const texto = estado === "rascunho" ? "Rascunho" : estado === "publicado" ? "Publicado" : "Desligado";
+  return <span className={`cfg-ponto cfg-ponto-${estado}`} title={texto} aria-label={texto} />;
 }

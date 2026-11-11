@@ -1,7 +1,7 @@
-// Aba Prestadores: lista e edição (token_env é só o NOME da variável; o valor do token fica no servidor).
+// Aba Prestadores: lista e edição. token_env é só o NOME da variável; o valor do token fica no servidor.
 import { useCallback, useEffect, useState } from "react";
 import { useSnackbar } from "notistack";
-import { FiEdit2, FiRefreshCw, FiLock } from "react-icons/fi";
+import { FiEdit2, FiRefreshCw } from "react-icons/fi";
 import { configService } from "../../services/config";
 import { Badge, Campo, CampoMotivo, Estado, Indicador, ListaDetalhes, Modal } from "./componentes";
 import {
@@ -153,8 +153,8 @@ export default function Prestadores() {
     <div className="cfg-card">
       <div className="cfg-card-titulo">
         <h2>Prestadores</h2>
-        <button type="button" className="cfg-btn cfg-btn-neutro cfg-btn-sm" onClick={carregar} disabled={carregando}>
-          <FiRefreshCw /> Atualizar
+        <button type="button" className="cfg-icon-btn" onClick={carregar} disabled={carregando} title="Atualizar" aria-label="Atualizar">
+          <FiRefreshCw />
         </button>
       </div>
 
@@ -163,34 +163,28 @@ export default function Prestadores() {
           <table className="cfg-tabela">
             <thead>
               <tr>
-                <th>CNPJ</th>
-                <th>Razão social</th>
-                <th>IM</th>
-                <th>Município (IBGE)</th>
+                <th>Empresa</th>
+                <th>Município</th>
                 <th>Provedor</th>
-                <th>Token (env)</th>
-                <th>Status</th>
+                <th>Token</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {lista.map((p) => (
                 <tr key={p.id} className={p.ativo ? "" : "cfg-inativa"}>
-                  <td className="cfg-mono">{formatarCnpj(p.cnpj)}</td>
-                  <td>{p.razao_social}</td>
-                  <td>{p.inscricao_municipal || "—"}</td>
+                  <td>
+                    <div>{p.razao_social}{!p.ativo && <Badge cor="vermelho">inativo</Badge>}</div>
+                    <small className="cfg-meta">{formatarCnpj(p.cnpj)}</small>
+                  </td>
                   <td>{p.codigo_municipio_ibge || "—"}</td>
+                  <td>{p.provedor_padrao || "—"}</td>
                   <td>
-                    <Badge cor={p.provedor_padrao === "municipal" ? "roxo" : "azul"}>{p.provedor_padrao || "—"}</Badge>
+                    <Indicador ok={!!p.token_configurado} textoOk={p.token_env || "ok"} textoNao={p.token_env || "ausente"} />
                   </td>
                   <td>
-                    <div className="cfg-mono">{p.token_env || "—"}</div>
-                    <Indicador ok={!!p.token_configurado} />
-                  </td>
-                  <td>{p.ativo ? <Badge cor="verde">ativo</Badge> : <Badge cor="vermelho">inativo</Badge>}</td>
-                  <td>
-                    <button type="button" className="cfg-btn cfg-btn-contorno cfg-btn-sm" onClick={() => abrir(p)}>
-                      <FiEdit2 /> Editar
+                    <button type="button" className="cfg-icon-btn" onClick={() => abrir(p)} title="Editar" aria-label="Editar">
+                      <FiEdit2 />
                     </button>
                   </td>
                 </tr>
@@ -202,7 +196,7 @@ export default function Prestadores() {
 
       <Modal
         aberto={!!editando}
-        titulo={editando ? `Editar prestador — ${editando.razao_social}` : ""}
+        titulo={editando ? editando.razao_social : ""}
         onFechar={fechar}
         rodape={
           <>
@@ -211,7 +205,7 @@ export default function Prestadores() {
             </button>
             {confirmacao ? (
               <button type="button" className="cfg-btn cfg-btn-perigo" onClick={() => salvar(true)} disabled={salvando}>
-                {salvando ? "Salvando…" : "Confirmar mesmo assim"}
+                {salvando ? "Salvando…" : "Salvar mesmo assim"}
               </button>
             ) : (
               <button type="button" className="cfg-btn cfg-btn-primario" onClick={() => salvar(false)} disabled={salvando}>
@@ -223,48 +217,34 @@ export default function Prestadores() {
       >
         {editando && (
           <>
-            <div className="cfg-aviso">
-              <FiLock />
-              <span>
-                O campo <strong>token_env</strong> é apenas o <em>nome</em> da variável de ambiente do servidor que guarda o
-                token da Focus. O valor do token fica só no servidor e nunca é exibido nem enviado por esta tela.
-              </span>
-            </div>
             {errosForm.geral && <div className="cfg-aviso cfg-aviso-perigo">{errosForm.geral}</div>}
             {fiscaisAlterados.length > 0 && (
-              <div className="cfg-aviso cfg-aviso-alerta">
-                <span>
-                  Campo(s) fiscal(is) alterado(s): <strong>{fiscaisAlterados.join(", ")}</strong>. Prestador não é
-                  versionado: a mudança vale <strong>imediatamente</strong> (até 60 s de cache) para todos os modelos ativos
-                  deste prestador, sem rascunho nem rollback por versão. O servidor pedirá confirmação.
-                </span>
-              </div>
+              <div className="cfg-aviso cfg-aviso-alerta">Vale na hora para todas as notas deste prestador.</div>
             )}
             {confirmacao && (
               <div className="cfg-aviso cfg-aviso-perigo">
                 <div>
                   <strong>{confirmacao.mensagem}</strong>
                   <ListaDetalhes itens={confirmacao.itens} />
-                  Revise e clique em “Confirmar mesmo assim” para gravar.
                 </div>
               </div>
             )}
             {form.ativo === false && editando.ativo && (
               <div className="cfg-aviso cfg-aviso-alerta">
-                Inativar o prestador faz as notas dele irem para “erro” na fila.
+                Prestador inativo: as notas dele vão para erro.
               </div>
             )}
             <div className="cfg-grid">
-              <Campo label="CNPJ" ajuda="Somente leitura.">
+              <Campo label="CNPJ">
                 <input className="cfg-input cfg-mono" value={formatarCnpj(editando.cnpj)} readOnly />
               </Campo>
               <Campo label="Razão social" obrigatorio erro={errosForm.razao_social}>
                 <input className="cfg-input" value={form.razao_social} onChange={set("razao_social")} />
               </Campo>
-              <Campo label="Inscrição municipal" erro={errosForm.inscricao_municipal} ajuda="Obrigatória no provedor municipal.">
+              <Campo label="Inscrição municipal" erro={errosForm.inscricao_municipal}>
                 <input className="cfg-input" value={form.inscricao_municipal} onChange={set("inscricao_municipal")} />
               </Campo>
-              <Campo label="Código município IBGE" obrigatorio erro={errosForm.codigo_municipio_ibge} ajuda="7 dígitos (3304557 Rio, 3550308 SP).">
+              <Campo label="Município (IBGE)" obrigatorio erro={errosForm.codigo_municipio_ibge}>
                 <input className="cfg-input" maxLength={7} value={form.codigo_municipio_ibge} onChange={set("codigo_municipio_ibge")} />
               </Campo>
               <Campo label="Provedor padrão" erro={errosForm.provedor_padrao}>
@@ -279,17 +259,9 @@ export default function Prestadores() {
                   ))}
                 </select>
               </Campo>
-              <Campo
-                label="Token (nome da variável)"
-                erro={errosForm.token_env}
-                ajuda="Maiúsculas, ex.: FOCUS_TOKEN_CONDOMED. Variável inexistente no servidor é recusada."
-              >
+              <Campo label="Token (variável)" erro={errosForm.token_env}>
                 <input className="cfg-input cfg-mono" value={form.token_env} onChange={set("token_env")} />
-                <Indicador
-                  ok={!!editando.token_configurado}
-                  textoOk="variável configurada no servidor"
-                  textoNao="variável vazia/ausente no servidor"
-                />
+                <Indicador ok={!!editando.token_configurado} />
               </Campo>
               <Campo erro={errosForm.ativo}>
                 <label className="cfg-check">
@@ -297,11 +269,7 @@ export default function Prestadores() {
                 </label>
               </Campo>
               <div className="cfg-grid-largo">
-                <Campo
-                  label="Razões sociais legado"
-                  erro={errosForm.razoes_sociais_legado}
-                  ajuda="Uma por linha (nomes antigos usados para casar notas)."
-                >
+                <Campo label="Razões sociais antigas (uma por linha)" erro={errosForm.razoes_sociais_legado}>
                   <textarea
                     className="cfg-input"
                     rows={2}

@@ -50,8 +50,8 @@ export default function Auditoria() {
     <div className="cfg-card">
       <div className="cfg-card-titulo">
         <h2>Auditoria</h2>
-        <button type="button" className="cfg-btn cfg-btn-neutro cfg-btn-sm" onClick={carregar} disabled={carregando}>
-          <FiRefreshCw /> Atualizar
+        <button type="button" className="cfg-icon-btn" onClick={carregar} disabled={carregando} title="Atualizar" aria-label="Atualizar">
+          <FiRefreshCw />
         </button>
       </div>
 
@@ -64,7 +64,7 @@ export default function Auditoria() {
             <option value="regra">Regra</option>
           </select>
         </Campo>
-        <Campo label="ID da entidade">
+        <Campo label="ID">
           <input className="cfg-input" inputMode="numeric" value={filtros.entidade_id} onChange={(e) => setFiltros((f) => ({ ...f, entidade_id: e.target.value.replace(/\D/g, "") }))} />
         </Campo>
         <Campo label="Ação">
@@ -77,7 +77,7 @@ export default function Auditoria() {
             ))}
           </select>
         </Campo>
-        <Campo label="Usuário (e-mail)">
+        <Campo label="Usuário">
           <input className="cfg-input" value={filtros.usuario} onChange={(e) => setFiltros((f) => ({ ...f, usuario: e.target.value }))} />
         </Campo>
         <button type="submit" className="cfg-btn cfg-btn-primario" style={{ marginBottom: 4 }}>
@@ -97,7 +97,7 @@ export default function Auditoria() {
         </button>
       </form>
 
-      <Estado carregando={carregando} erro={erro} vazio={!itens.length} textoVazio="Nenhum registro de auditoria.">
+      <Estado carregando={carregando} erro={erro} vazio={!itens.length} textoVazio="Nada registrado.">
         <div className="cfg-tabela-wrap">
           <table className="cfg-tabela">
             <thead>
@@ -167,7 +167,7 @@ export default function Auditoria() {
 
       <div className="cfg-paginacao">
         <span>
-          {total} registro(s) · página {pagina} de {totalPaginas}
+          {total} · {pagina}/{totalPaginas}
         </span>
         <div className="cfg-acoes">
           <button type="button" className="cfg-btn cfg-btn-neutro cfg-btn-sm" disabled={pagina <= 1 || carregando} onClick={() => setPagina((p) => p - 1)}>

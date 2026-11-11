@@ -1,25 +1,17 @@
-// Serviço da página Configuração: gestão dos modelos de emissão NFS-e (backend /api/nfse/config/).
-// Todos os endpoints ficam centralizados aqui para facilitar ajustes no contrato.
-// Contrato: NFS-e-Django/.claude/docs/api-config-v1.md (v1, 10/11/2026).
-//  - Leituras devolvem o recurso direto; escritas devolvem o envelope
-//    {objeto, auditoria_id, efetivo_em_ate_segundos, avisos}.
+// Serviço da página Configuração (backend /api/nfse/config/).
+// Contrato: NFS-e-Django/.claude/docs/api-config-v1.md — §10 "Mapa simplificado v2" (faturas: Padrão da empresa +
+// Apólice; integrações externo/VR com modelo fixo). Prestadores (§3), modelos (§4: detalhe, schema, PATCH, dry-run) e
+// auditoria (§6) seguem a v1.
+//  - Leituras devolvem o recurso direto; escritas devolvem o envelope {objeto, auditoria_id, efetivo_em_ate_segundos, avisos}.
 //  - Erros: {erro: {codigo, mensagem, campos}} (ver pages/configuracao/utils.js).
-//  - Paginadas (prestadores, auditoria): ?page=&page_size= (máx. 200) → {count, next, previous, results}.
-//  - Camadas fixas (10/11/2026): a aba Regras saiu; o front não cria/edita regra nem prioridade. A regra nasce em
-//    POST mapa/criar/ (camada definida pela condição) e só `regras/simular/` continua em uso.
-//  - Toda escrita exige `motivo` (≥ 5 caracteres); dry-run e simular não gravam e não pedem motivo.
-//  - Travas confirmáveis: envie SEM `confirmar`; se vier 400 `confirmacao_necessaria` (prestador) ou
-//    409 `versao_sem_regra_ativa` / `ultima_versao_ativa` (modelo), mostre a mensagem e repita com `confirmar: true`
-//    só se o usuário aceitar. 409 `regra_invalida` NÃO aceita confirmar.
+//  - Toda escrita exige `motivo` (≥ 5 caracteres), inclusive editar/descartar (§10.5).
+//  - Travas confirmáveis: envie SEM `confirmar`; se o backend pedir confirmação, repita com `confirmar: true`.
 import api from "./api";
 
-/** Tamanho máximo de página aceito pelo backend (listas pequenas carregadas de uma vez). */
+/** Tamanho máximo de página aceito pelo backend. */
 export const PAGE_SIZE_MAX = 200;
 
-/**
- * Fixtures golden aceitas pelo dry-run (nfse/tests/golden/fixtures.py). O contrato não expõe a lista;
- * se um dia `modelos/schema/` trouxer `fixtures`, ela tem prioridade.
- */
+/** Fixtures golden aceitas pelo dry-run (nfse/tests/golden/fixtures.py). */
 export const FIXTURES_PADRAO = [
   "comum_fedcorp_adm_ded0",
   "comum_fedcorp_adm_socio_ded",
@@ -34,98 +26,69 @@ export const FIXTURES_PADRAO = [
 ];
 
 const BASE = "/api/nfse/config";
+const enc = encodeURIComponent;
 
 export const ENDPOINTS = {
   me: `${BASE}/me/`,
   prestadores: `${BASE}/prestadores/`,
   prestador: (id) => `${BASE}/prestadores/${id}/`,
-  modelos: `${BASE}/modelos/`,
   modelosSchema: `${BASE}/modelos/schema/`,
   modelo: (id) => `${BASE}/modelos/${id}/`,
-  modeloClonar: (id) => `${BASE}/modelos/${id}/clonar/`,
-  modeloAtivar: (id) => `${BASE}/modelos/${id}/ativar/`,
-  modeloDesativar: (id) => `${BASE}/modelos/${id}/desativar/`,
+  modeloEditar: (id) => `${BASE}/modelos/${id}/editar/`,
+  modeloPublicar: (id) => `${BASE}/modelos/${id}/publicar/`,
+  modeloDescartar: (id) => `${BASE}/modelos/${id}/descartar/`,
   modeloDryRun: (id) => `${BASE}/modelos/${id}/dry-run/`,
-  regrasSimular: `${BASE}/regras/simular/`,
   auditoria: `${BASE}/auditoria/`,
-  // Mapa de emissão (contrato §9): empresa × condição → regra (camada fixa) + modelo.
+  // §10 Mapa simplificado v2
   mapa: `${BASE}/mapa/`,
-  mapaCriar: `${BASE}/mapa/criar/`,
-  mapaFicha: (prestadorId, condicao) => `${BASE}/mapa/${prestadorId}/${encodeURIComponent(condicao)}/`,
-  mapaDerivarPadrao: (prestadorId) => `${BASE}/mapa/${prestadorId}/padrao/derivar/`,
+  mapaPadrao: (prestadorId) => `${BASE}/mapa/${prestadorId}/padrao/`,
+  mapaApolices: (prestadorId) => `${BASE}/mapa/${prestadorId}/apolice/`,
+  mapaApolice: (prestadorId, codigo) => `${BASE}/mapa/${prestadorId}/apolice/${enc(codigo)}/`,
+  mapaApoliceDesativar: (prestadorId, codigo) => `${BASE}/mapa/${prestadorId}/apolice/${enc(codigo)}/desativar/`,
+  mapaApoliceReativar: (prestadorId, codigo) => `${BASE}/mapa/${prestadorId}/apolice/${enc(codigo)}/reativar/`,
+  mapaIntegracao: (chave) => `${BASE}/mapa/integracao/${enc(chave)}/`,
 };
 
 const dados = (r) => r.data;
+const comConfirmar = (corpo, confirmar) => (confirmar ? { ...corpo, confirmar: true } : corpo);
 
 export const configService = {
-  // Permissão
   me: () => api.get(ENDPOINTS.me).then(dados),
 
-  // Prestadores
+  // Prestadores (§3)
   listarPrestadores: (params = {}) =>
     api.get(ENDPOINTS.prestadores, { params: { page_size: PAGE_SIZE_MAX, ...params } }).then(dados),
-  obterPrestador: (id) => api.get(ENDPOINTS.prestador(id)).then(dados),
   atualizarPrestador: (id, campos, motivo, confirmar = false) =>
-    api.patch(ENDPOINTS.prestador(id), { ...campos, motivo, ...(confirmar ? { confirmar: true } : {}) }).then(dados),
+    api.patch(ENDPOINTS.prestador(id), comConfirmar({ ...campos, motivo }, confirmar)).then(dados),
 
-  // Modelos
-  /** Lista agrupada por código (não paginada). Filtros: codigo, ativo. */
-  listarModelos: (params = {}) => api.get(ENDPOINTS.modelos, { params }).then(dados),
+  // Modelos (§4 + §10)
   schemaModelos: () => api.get(ENDPOINTS.modelosSchema).then(dados),
   obterModelo: (id) => api.get(ENDPOINTS.modelo(id)).then(dados),
   atualizarModelo: (id, campos, motivo) => api.patch(ENDPOINTS.modelo(id), { ...campos, motivo }).then(dados),
-  clonarModelo: (id, motivo) => api.post(ENDPOINTS.modeloClonar(id), { motivo }).then(dados),
-  /**
-   * 200: envelope + desativadas + diff_regras (com `reapontadas`, §9.6) + simulacao (calculados antes de gravar).
-   * `prestadorId` (opcional): ativação pela ficha/wizard de uma empresa — o backend recusa com 409 `modelo_compartilhado`
-   * versão sem prestador cujo código tem regra de outro dono (FALLBACK, outra empresa, transversal). Sem ele = caminho global.
-   */
-  ativarModelo: (id, motivo, confirmar = false, prestadorId = null) =>
-    api
-      .post(ENDPOINTS.modeloAtivar(id), {
-        motivo,
-        ...(confirmar ? { confirmar: true } : {}),
-        ...(prestadorId != null && prestadorId !== "" ? { prestador_id: Number(prestadorId) } : {}),
-      })
-      .then(dados),
-  desativarModelo: (id, motivo, confirmar = false) =>
-    api.post(ENDPOINTS.modeloDesativar(id), { motivo, ...(confirmar ? { confirmar: true } : {}) }).then(dados),
+  /** Abre (ou devolve) o rascunho de edição; `objeto` = detalhe do rascunho (§10.5). */
+  editarModelo: (id, motivo) => api.post(ENDPOINTS.modeloEditar(id), { motivo }).then(dados),
+  publicarModelo: (id, motivo, confirmar = false) =>
+    api.post(ENDPOINTS.modeloPublicar(id), comConfirmar({ motivo }, confirmar)).then(dados),
+  descartarModelo: (id, motivo) => api.post(ENDPOINTS.modeloDescartar(id), { motivo }).then(dados),
   /** entrada: { id_integracao } ou { fixture } */
   dryRunModelo: (id, entrada) => api.post(ENDPOINTS.modeloDryRun(id), entrada).then(dados),
 
-  // Regras de resolução: só a simulação (o CRUD de regras saiu do front com a aba Regras, 10/11/2026).
-  /**
-   * Simula modelo atual × proposto nas últimas N notas (não grava).
-   * opcoes: { regras?: [ajustes em memória], ativar_modelos?: [ids de versões tratadas como ativas] }
-   */
-  simularRegras: (ultimas = 200, opcoes = {}) => {
-    const corpo = { ultimas };
-    if (opcoes.regras?.length) corpo.regras = opcoes.regras;
-    if (opcoes.ativar_modelos?.length) corpo.ativar_modelos = opcoes.ativar_modelos;
-    return api.post(ENDPOINTS.regrasSimular, corpo).then(dados);
-  },
-
-  // Mapa de emissão (§9)
-  /** Lista por prestador: {padrao, condicoes[] com `camada`}, transversais e `faixas` (camadas com rótulos). */
+  // Mapa v2 (§10)
   listarMapa: () => api.get(ENDPOINTS.mapa).then(dados),
-  /**
-   * Cria rascunho + regra para a combinação. corpo: {prestador_id, condicao:{tipo, valor}, base_modelo_id?, motivo}.
-   * Sem prioridade: a camada vem da condição (apólice → Apólice, padrao → Padrão da empresa, tipo_nfe → Canal).
-   */
-  criarMapa: (corpo) => api.post(ENDPOINTS.mapaCriar, corpo).then(dados),
-  /** Ficha completa da combinação (modelo ativo por grupos, rascunhos, regra, últimas notas, payload de exemplo). */
-  fichaMapa: (prestadorId, condicao) => api.get(ENDPOINTS.mapaFicha(prestadorId, condicao)).then(dados),
-  /**
-   * Padrão próprio da empresa (§9.6): quando o padrão usa um modelo compartilhado (ex.: B-1, também fallback geral),
-   * cria um modelo só da empresa (rascunho, código novo) + regra padrão; ao ativar, a regra padrão é reapontada.
-   * corpo: {motivo, codigo_sugerido?}.
-   */
-  derivarPadraoMapa: (prestadorId, motivo, codigoSugerido = "") =>
-    api
-      .post(ENDPOINTS.mapaDerivarPadrao(prestadorId), { motivo, ...(codigoSugerido ? { codigo_sugerido: codigoSugerido } : {}) })
-      .then(dados),
+  fichaPadrao: (prestadorId) => api.get(ENDPOINTS.mapaPadrao(prestadorId)).then(dados),
+  fichaApolice: (prestadorId, codigo) => api.get(ENDPOINTS.mapaApolice(prestadorId, codigo)).then(dados),
+  fichaIntegracao: (chave) => api.get(ENDPOINTS.mapaIntegracao(chave)).then(dados),
+  /** Empresa sem padrão: cria o rascunho do padrão. */
+  criarPadrao: (prestadorId, motivo) => api.post(ENDPOINTS.mapaPadrao(prestadorId), { motivo }).then(dados),
+  criarApolice: (prestadorId, apolice, motivo) =>
+    api.post(ENDPOINTS.mapaApolices(prestadorId), { apolice, motivo }).then(dados),
+  /** 1ª chamada sem `confirmar`: 409 `confirmar_desativacao` traz a mensagem/simulação; repita com confirmar. */
+  desativarApolice: (prestadorId, codigo, motivo, confirmar = false) =>
+    api.post(ENDPOINTS.mapaApoliceDesativar(prestadorId, codigo), comConfirmar({ motivo }, confirmar)).then(dados),
+  reativarApolice: (prestadorId, codigo, motivo) =>
+    api.post(ENDPOINTS.mapaApoliceReativar(prestadorId, codigo), { motivo }).then(dados),
 
-  // Auditoria (paginada). Filtros: entidade (prestador|modelo|regra), entidade_id, acao, usuario, page, page_size.
+  // Auditoria (§6). Filtros: entidade, entidade_id, acao, usuario, page, page_size.
   listarAuditoria: (filtros = {}) => {
     const params = {};
     Object.entries(filtros).forEach(([k, v]) => {

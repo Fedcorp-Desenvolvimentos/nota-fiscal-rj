@@ -13,21 +13,13 @@ export function codigoErro(error) {
   return corpoErro(error)?.codigo || null;
 }
 
-/**
- * 409 de ativação por regra com as mesmas condições de uma regra efetiva de outro modelo (R85).
- * `conflito_condicao` é o código atual; `conflito_prioridade` (antes da 0044) fica como alias de compatibilidade.
- */
-export const CODIGOS_CONFLITO_CONDICAO = new Set(["conflito_condicao", "conflito_prioridade"]);
-export const MENSAGEM_CONFLITO_CONDICAO =
-  "Já existe uma regra efetiva com as mesmas condições (empresa/apólice); ajuste ou desative a regra existente.";
-
-/** True se o erro é o conflito de condições da ativação (código atual ou o alias antigo). */
-export function ehConflitoCondicao(error) {
-  return CODIGOS_CONFLITO_CONDICAO.has(codigoErro(error));
-}
-
 /** Códigos de trava que aceitam repetir a chamada com `confirmar: true`. */
-export const CODIGOS_CONFIRMAVEIS = new Set(["confirmacao_necessaria", "versao_sem_regra_ativa", "ultima_versao_ativa"]);
+export const CODIGOS_CONFIRMAVEIS = new Set([
+  "confirmacao_necessaria",
+  "versao_sem_regra_ativa",
+  "ultima_versao_ativa",
+  "origem_desatualizada",
+]);
 
 /** True se o erro é uma trava confirmável (400/409 com um dos códigos acima). */
 export function precisaConfirmar(error) {
@@ -109,13 +101,9 @@ export function validarMotivo(motivo) {
   return "";
 }
 
-/**
- * Mostra, via notistack, o sucesso e os avisos do envelope de escrita
- * ({objeto, auditoria_id, efetivo_em_ate_segundos, avisos}).
- */
+/** Toast de sucesso + avisos do envelope de escrita ({objeto, auditoria_id, efetivo_em_ate_segundos, avisos}). */
 export function notificarEscrita(enqueueSnackbar, resposta, mensagem) {
-  const seg = resposta?.efetivo_em_ate_segundos;
-  enqueueSnackbar(seg ? `${mensagem} Vale para a fila em até ${seg} s.` : mensagem, { variant: "success" });
+  enqueueSnackbar(mensagem, { variant: "success" });
   (resposta?.avisos || []).forEach((a) =>
     enqueueSnackbar(typeof a === "string" ? a : JSON.stringify(a), { variant: "warning", autoHideDuration: 10000 })
   );

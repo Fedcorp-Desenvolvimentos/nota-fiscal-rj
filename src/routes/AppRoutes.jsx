@@ -13,11 +13,10 @@ import Historico from "../pages/Historico";
 import AdminConfigRoute from "./AdminConfigRoute";
 import Configuracao from "../pages/configuracao/Configuracao";
 import Prestadores from "../pages/configuracao/Prestadores";
-import RedirecionarModelo from "../pages/configuracao/RedirecionarModelo";
-import NovaConfiguracaoWizard from "../pages/configuracao/NovaConfiguracaoWizard";
 import Auditoria from "../pages/configuracao/Auditoria";
 import MapaEmissao from "../pages/configuracao/MapaEmissao";
-import MapaFicha from "../pages/configuracao/MapaFicha";
+import Ficha from "../pages/configuracao/Ficha";
+import Integracoes from "../pages/configuracao/Integracoes";
 
 // Layout principal (com Sidebar e Breadcrumb)
 import MainLayout from "../layouts/MainLayout";
@@ -71,15 +70,17 @@ export const AppRoutes = () => {
         >
           <Route index element={<Navigate to="mapa" replace />} />
           <Route path="mapa" element={<MapaEmissao />}>
-            <Route path="nova" element={<NovaConfiguracaoWizard />} />
-            <Route path=":prestadorId/:condicao" element={<MapaFicha />} />
+            <Route path=":prestadorId/padrao" element={<Ficha tipo="padrao" />} />
+            <Route path=":prestadorId/apolice/:codigo" element={<Ficha tipo="apolice" />} />
+          </Route>
+          <Route path="integracoes" element={<Integracoes />}>
+            <Route path=":chave" element={<Ficha tipo="integracao" />} />
           </Route>
           <Route path="prestadores" element={<Prestadores />} />
-          {/* Antiga aba Modelos: unificada na ficha do Mapa (10/11/2026); rotas mantidas só como redirect. */}
-          <Route path="modelos" element={<Navigate to="/configuracao/mapa" replace />} />
-          <Route path="modelos/:id" element={<RedirecionarModelo />} />
-          {/* Antiga aba Regras: removida em 10/11/2026 (camadas fixas definidas pelo Mapa); só redirect. */}
-          <Route path="regras" element={<Navigate to="/configuracao/mapa" replace />} />
+          {/* Rotas antigas (wizard, ficha por condição, Modelos, Regras): voltam para o mapa. */}
+          <Route path="mapa/*" element={<Navigate to="/configuracao/mapa" replace />} />
+          <Route path="modelos/*" element={<Navigate to="/configuracao/mapa" replace />} />
+          <Route path="regras/*" element={<Navigate to="/configuracao/mapa" replace />} />
           <Route path="auditoria" element={<Auditoria />} />
         </Route>
       </Route>
