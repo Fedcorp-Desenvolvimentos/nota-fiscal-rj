@@ -5,18 +5,28 @@
 // regras da versão, simular impacto (rascunho), dry-run, últimas notas, payload de exemplo e histórico (auditoria do
 // modelo e da regra). Camadas fixas (10/11/2026): a regra aparece pela camada ("Apólice", "Padrão da empresa", "Canal",
 // "Fallback geral") com o número em cinza, só informativo; não há mais link para a aba Regras (removida).
+// Edição do padrão (§9.6): a ficha SEMPRE oferece um caminho de edição. `acoes_disponiveis` decide qual:
+//   - "clonar_versao" → "Clonar para editar" (modelo só desta empresa);
+//   - "derivar_padrao_proprio" → modelo compartilhado (ex.: B-1, também fallback geral): "Criar padrão próprio desta
+//     empresa" → POST mapa/{id}/padrao/derivar/ → wizard no passo "Parâmetros";
+//   - "criar_padrao" (empresa `sem_mapeamento`) → "Criar padrão da empresa" (wizard, POST mapa/criar/ com padrao);
+//   - `padrao_derivado_pendente` → o rascunho derivado entra no seletor de versões ("editar/ativar rascunho"); ao ativar,
+//     o backend reaponta a regra padrão (999) da empresa para ele (diff_regras.reapontadas);
+//   - "reativar_padrao" (padrão próprio desativado = rollback; `modelo_a_reativar`) → "Padrão inativo" + "Reativar padrão
+//     (B-2)" = POST modelos/{id}/ativar/ com prestador_id. `location.state.reativar` (vindo da árvore) abre direto.
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
-import { FiCopy, FiPlay, FiCheckCircle, FiAlertTriangle, FiFileText, FiPower, FiPlus } from "react-icons/fi";
+import { FiCopy, FiPlay, FiCheckCircle, FiAlertTriangle, FiFileText, FiPower, FiPlus, FiEdit3 } from "react-icons/fi";
 import { configService } from "../../services/config";
 import { Badge, Estado, JsonView, Campo, RotuloCamada } from "./componentes";
 import DryRunPainel from "./DryRunPainel";
 import SimularImpacto from "./SimularImpacto";
 import AcaoModeloModal from "./AcaoModeloModal";
+import DerivarPadraoModal from "./DerivarPadraoModal";
 import EditorParametros from "./EditorParametros";
 import HistoricoFicha from "./HistoricoFicha";
-import { camadaDe, corCondicao, nomeCampo, normalizarCombinacao, rotuloVersao } from "./mapaDados";
+import { camadaDe, corCondicao, nomeCampo, normalizarCombinacao, rotuloVersao, textoPadraoCompartilhado } from "./mapaDados";
 import { comoLista, formatarCnpj, formatarData, mensagemErro } from "./utils";
 
 function normalizarFicha(d, condicaoUrl) {
@@ -49,6 +59,7 @@ function versoesDaFicha(f) {
     if (v?.id != null && !lista.some((x) => String(x.id) === String(v.id))) lista.push({ ...v, papel });
   };
   add(f.modeloAtivo, "ativa");
+  add(f.derivadoPendente, "padrão próprio, rascunho");
   f.rascunhos.forEach((r) => add(r, "rascunho"));
   if (f.modeloExibido) add(f.modeloExibido, f.modeloExibido.ativo ? "ativa" : "rascunho");
   return lista;
@@ -75,6 +86,9 @@ export default function MapaFicha() {
   const [sujo, setSujo] = useState(false);
 
   const [acao, setAcao] = useState(null); // "clonar" | "ativar" | "desativar"
+  const [derivando, setDerivando] = useState(false);
+  const [reativar, setReativar] = useState(null); // modelo (resumo) a reativar pelo AcaoModeloModal "ativar"
+  const [pedidoReativar, setPedidoReativar] = useState(false); // "Reativar" clicado na árvore: abre ao carregar
   const [proximosPassos, setProximosPassos] = useState(location.state?.proximosPassos || null);
 
   const carregarFicha = useCallback(
@@ -126,6 +140,8 @@ export default function MapaFicha() {
   useEffect(() => {
     setProximosPassos(location.state?.proximosPassos || null);
     carregarFicha(location.state?.rascunhoId ?? null);
+    setReativar(null);
+    setPedidoReativar(!!location.state?.reativar);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carregarFicha]);
 
@@ -160,9 +176,54 @@ export default function MapaFicha() {
   const cnpjEmpresa = ficha?.prestador?.cnpj || empresa?.cnpj || "";
   const versoes = ficha ? versoesDaFicha(ficha) : [];
   const rascunhoMaisNovo = ficha?.rascunhos?.[0] || null;
-  // Padrão por FALLBACK: o modelo exibido é o geral (B-1); clonar/ativar daqui afetaria todas as empresas sem padrão.
-  const bloqueadoFallback = !!ficha?.semMapeamento;
-  const editavel = modelo && !bloqueadoFallback ? (modelo.editavel ?? !modelo.ativo) : false;
+  // Caminho de edição (§9.6): `acoes_disponiveis` = clonar_versao | derivar_padrao_proprio | criar_padrao. Sem a lista
+  // (backend antigo): criar_padrao se `sem_mapeamento`, senão clonar_versao.
+  const acoes = ficha?.acoesDisponiveis || (ficha?.semMapeamento ? ["criar_padrao"] : ["clonar_versao"]);
+  const semPadrao = acoes.includes("criar_padrao");
+  const aReativar = acoes.includes("reativar_padrao") ? ficha?.modeloAReativar || null : null;
+  useEffect(() => {
+    if (!pedidoReativar || !ficha) return;
+    setPedidoReativar(false);
+    if (aReativar?.id != null) setReativar(aReativar);
+  }, [pedidoReativar, ficha, aReativar]);
+  const abrirReativar = (modeloId = null) => {
+    setDerivando(false);
+    const alvo = modeloId != null && String(modeloId) !== String(aReativar?.id) ? { id: Number(modeloId) } : aReativar;
+    if (alvo?.id != null) setReativar(alvo);
+  };
+  const pendente = ficha?.derivadoPendente || null;
+  // Com rascunho derivado pendente, não deriva de novo (409 derivacao_pendente): edita/ativa o rascunho.
+  const podeDerivar = !semPadrao && !pendente && acoes.includes("derivar_padrao_proprio");
+  const podeClonar = !semPadrao && acoes.includes("clonar_versao");
+  const compartilhado = !!ficha?.modeloCompartilhado || podeDerivar;
+  // Empresa sem padrão próprio: a ficha mostra o FALLBACK geral (vale para todas as empresas sem padrão) — fica para
+  // consulta e a ação é "Criar padrão da empresa". Nos demais casos, rascunho é editável e a ativa é travada.
+  const editavel = modelo && !semPadrao ? (modelo.editavel ?? !modelo.ativo) : false;
+  // O compartilhado é também o fallback geral? §9.6: `modelo_eh_fallback` explícito (backend antigo: assume que sim).
+  const idCompartilhado = ficha?.modeloAtivo?.id ?? ficha?.modelo?.id ?? null;
+  const compartilhadoEhFallback = ficha?.modeloEhFallback ?? true;
+  const abrirDerivado = (resp) => {
+    setDerivando(false);
+    const obj = resp?.objeto || {};
+    ctx.recarregarMapa?.();
+    navigate(`/configuracao/mapa/nova?prestador=${prestadorId}&tipo=padrao`, {
+      state: {
+        derivado: {
+          modelo: obj.modelo,
+          regra: obj.regra || obj.regra_a_reapontar || null,
+          condicao: obj.condicao || { chave: "padrao", tipo: "padrao", valor: null },
+          base_modelo_id: obj.modelo_origem?.id ?? idCompartilhado,
+          reapontamento: obj.reapontamento || "",
+          regra_a_reapontar: obj.regra_a_reapontar || null,
+        },
+      },
+    });
+  };
+  // 409 derivacao_pendente (rascunho já existe): foca o rascunho na própria ficha.
+  const abrirPendente = async (modeloId) => {
+    setDerivando(false);
+    await carregarFicha(modeloId);
+  };
   const regraId = ficha?.regra?.id ?? null;
   const novaConfiguracao = (tipo) =>
     ctx.abrirNova ? ctx.abrirNova(empresa || { id: Number(prestadorId) }, tipo) : navigate(`/configuracao/mapa/nova?prestador=${prestadorId}&tipo=${tipo}`);
@@ -219,16 +280,42 @@ export default function MapaFicha() {
                       ))}
                     </select>
                   </Campo>
-                  {modelo && !bloqueadoFallback && (
+                  {modelo && (
                     <div className="cfg-acoes">
-                      {modelo.ativo ? (
+                      {aReativar && modelo.ativo ? (
+                        <button type="button" className="cfg-btn cfg-btn-sucesso" onClick={() => abrirReativar()}>
+                          <FiCheckCircle /> Reativar padrão ({rotuloVersao(aReativar)})
+                        </button>
+                      ) : semPadrao ? (
+                        <button type="button" className="cfg-btn cfg-btn-primario" onClick={() => novaConfiguracao("padrao")}>
+                          <FiPlus /> Criar padrão da empresa
+                        </button>
+                      ) : modelo.ativo ? (
                         <>
-                          <button type="button" className="cfg-btn cfg-btn-primario" onClick={() => setAcao("clonar")}>
-                            <FiCopy /> Clonar para editar
-                          </button>
-                          <button type="button" className="cfg-btn cfg-btn-neutro" onClick={() => setAcao("desativar")}>
-                            <FiPower /> Desativar
-                          </button>
+                          {pendente && String(pendente.id) !== String(modelo.id) && (
+                            <button type="button" className="cfg-btn cfg-btn-primario" onClick={() => setVersaoId(pendente.id)} disabled={sujo}>
+                              <FiEdit3 /> Editar padrão próprio ({rotuloVersao(pendente)}, rascunho)
+                            </button>
+                          )}
+                          {podeDerivar && (
+                            <button type="button" className="cfg-btn cfg-btn-primario" onClick={() => setDerivando(true)}>
+                              <FiEdit3 /> Criar padrão próprio desta empresa
+                            </button>
+                          )}
+                          {podeClonar && (
+                            <button
+                              type="button"
+                              className={`cfg-btn ${podeDerivar ? "cfg-btn-contorno" : "cfg-btn-primario"}`}
+                              onClick={() => setAcao("clonar")}
+                            >
+                              <FiCopy /> Clonar para editar
+                            </button>
+                          )}
+                          {podeClonar && !compartilhado && (
+                            <button type="button" className="cfg-btn cfg-btn-neutro" onClick={() => setAcao("desativar")}>
+                              <FiPower /> Desativar
+                            </button>
+                          )}
                         </>
                       ) : (
                         <>
@@ -279,14 +366,15 @@ export default function MapaFicha() {
                 </div>
               )}
 
-              {(bloqueadoFallback || versoes.length === 0) && (
+              {(semPadrao || versoes.length === 0) && (
                 <div className="cfg-aviso cfg-aviso-alerta">
                   <FiAlertTriangle />
                   <span>
                     {ficha.tipo === "padrao"
                       ? "Esta empresa não tem padrão próprio: cai no modelo padrão geral (fallback)."
                       : "Esta condição não tem modelo: as notas caem no padrão da empresa ou no padrão geral (fallback)."}
-                    {bloqueadoFallback && " O modelo abaixo é o geral, compartilhado por todas as empresas sem padrão: aqui ele fica só para consulta."}{" "}
+                    {semPadrao &&
+                      " O modelo abaixo é o geral, compartilhado por todas as empresas sem padrão. Para editar o desta empresa, crie o padrão dela (nasce como cópia editável)."}{" "}
                     <button type="button" className="cfg-link-btn" onClick={() => novaConfiguracao(ficha.tipo === "padrao" ? "padrao" : "apolice")}>
                       {ficha.tipo === "padrao" ? "Criar padrão da empresa" : "Criar configuração"}
                     </button>
@@ -294,7 +382,47 @@ export default function MapaFicha() {
                 </div>
               )}
 
-              {!bloqueadoFallback && modelo?.ativo && rascunhoMaisNovo && String(rascunhoMaisNovo.id) !== String(versaoId) && (
+              {aReativar && (
+                <div className="cfg-aviso cfg-aviso-alerta">
+                  <FiAlertTriangle />
+                  <span>
+                    <strong>Padrão inativo.</strong> O padrão próprio desta empresa ({rotuloVersao(aReativar)}) está desativado: as notas
+                    sem canal/apólice caem no fallback geral.{" "}
+                    <button type="button" className="cfg-btn cfg-btn-sucesso cfg-btn-sm" onClick={() => abrirReativar()}>
+                      Reativar padrão ({rotuloVersao(aReativar)})
+                    </button>
+                  </span>
+                </div>
+              )}
+
+              {pendente && (
+                <div className="cfg-aviso">
+                  <FiEdit3 />
+                  <span>
+                    Há um padrão próprio desta empresa em rascunho: <strong>{rotuloVersao(pendente)}</strong> (ainda não emite). Ao
+                    ativá-lo, a regra padrão da empresa passa do {rotuloVersao(ficha.modeloAtivo || ficha.modelo)} para ele.{" "}
+                    {String(versaoId) !== String(pendente.id) && (
+                      <button type="button" className="cfg-link-btn" onClick={() => setVersaoId(pendente.id)} disabled={sujo}>
+                        Editar / ativar o rascunho
+                      </button>
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {podeDerivar && (
+                <div className="cfg-aviso">
+                  <FiEdit3 />
+                  <span>
+                    {textoPadraoCompartilhado(ficha.modeloAtivo || ficha.modelo, { fallback: compartilhadoEhFallback })}{" "}
+                    <button type="button" className="cfg-link-btn" onClick={() => setDerivando(true)}>
+                      Criar padrão próprio desta empresa
+                    </button>
+                  </span>
+                </div>
+              )}
+
+              {!semPadrao && modelo?.ativo && rascunhoMaisNovo && String(rascunhoMaisNovo.id) !== String(versaoId) && (
                 <div className="cfg-aviso">
                   <span>
                     Há um rascunho em andamento: <strong>{rotuloVersao(rascunhoMaisNovo)}</strong>.{" "}
@@ -389,7 +517,7 @@ export default function MapaFicha() {
             )}
 
             {/* Simular impacto: só para rascunho (a versão ativa já emite) */}
-            {modelo && !modelo.ativo && !bloqueadoFallback && (
+            {modelo && !modelo.ativo && !semPadrao && (
               <div className="cfg-card">
                 <div className="cfg-card-titulo">
                   <h3>Simular impacto — {rotuloVersao(modelo)}</h3>
@@ -489,7 +617,43 @@ export default function MapaFicha() {
         )}
       </Estado>
 
-      <AcaoModeloModal acao={acao} modelo={modelo} onFechar={() => setAcao(null)} onConcluido={aoConcluirAcao} />
+      <AcaoModeloModal
+        acao={acao}
+        modelo={modelo}
+        prestadorId={prestadorId}
+        onDerivar={
+          acoes.includes("derivar_padrao_proprio") && !pendente
+            ? () => {
+                setAcao(null);
+                setDerivando(true);
+              }
+            : undefined
+        }
+        onFechar={() => setAcao(null)}
+        onConcluido={aoConcluirAcao}
+      />
+      <DerivarPadraoModal
+        aberto={derivando}
+        prestadorId={prestadorId}
+        nomeEmpresa={nomeEmpresa}
+        modelo={ficha?.modeloAtivo || ficha?.modelo}
+        fallback={compartilhadoEhFallback}
+        onFechar={() => setDerivando(false)}
+        onConcluido={abrirDerivado}
+        onAbrirPendente={abrirPendente}
+        onReativar={abrirReativar}
+      />
+      <AcaoModeloModal
+        acao={reativar ? "ativar" : null}
+        modelo={reativar}
+        prestadorId={prestadorId}
+        onFechar={() => setReativar(null)}
+        onConcluido={async () => {
+          setReativar(null);
+          await carregarFicha(null);
+          ctx.recarregarMapa?.();
+        }}
+      />
     </div>
   );
 }

@@ -1,13 +1,14 @@
 // "Simular impacto": POST regras/simular/ com ativar_modelos=[id] (contrato §5.1) — quantas das últimas 200 notas
 // mudariam de modelo se esta versão fosse ativada. Não grava nada. Usado no passo 3 do wizard e na ficha do mapa
 // (rascunho em foco). Extraído do wizard quando a aba Regras (que tinha a simulação avulsa) foi removida (10/11/2026).
+// §9.6: padrão derivado com vínculo que não confere → 400 `validacao` em `campos.ativar_modelos` ("derivacao_invalida: ...").
 import { useEffect, useState } from "react";
 import { useSnackbar } from "notistack";
 import { FiPlay } from "react-icons/fi";
 import { configService } from "../../services/config";
 import { ErrosBackend } from "./componentes";
 import { rotuloVersao } from "./mapaDados";
-import { mensagemErro } from "./utils";
+import { errosDeCampo, mensagemErro } from "./utils";
 
 const ULTIMAS = 200;
 
@@ -45,7 +46,17 @@ export default function SimularImpacto({ modeloId, desabilitado = false }) {
           <FiPlay /> {simulando ? "Simulando…" : `Simular impacto (últimas ${ULTIMAS} notas)`}
         </button>
       </div>
-      <ErrosBackend erro={erro} padrao="Falha na simulação." />
+      {errosDeCampo(erro).ativar_modelos && (
+        <div className="cfg-aviso cfg-aviso-perigo">
+          <div>
+            <strong>A simulação recusou esta versão:</strong> {errosDeCampo(erro).ativar_modelos}
+            {/derivacao_invalida/.test(errosDeCampo(erro).ativar_modelos) && (
+              <div>O vínculo do padrão derivado não confere mais: descarte este rascunho e crie o padrão próprio de novo.</div>
+            )}
+          </div>
+        </div>
+      )}
+      <ErrosBackend erro={erro} conhecidos={["ativar_modelos"]} padrao="Falha na simulação." />
       {simulacao && (
         <div className="cfg-aviso">
           <div>

@@ -12,7 +12,7 @@ import { Link, useMatch, useNavigate, useOutlet } from "react-router-dom";
 import { FiChevronDown, FiChevronRight, FiPlus, FiRefreshCw, FiSearch, FiAlertTriangle } from "react-icons/fi";
 import { configService } from "../../services/config";
 import { Badge, Estado, RotuloCamada } from "./componentes";
-import { CAMADAS, STATUS_COMBINACAO, camadasDaLegenda, corCondicao, normalizarMapa, rotuloVersao } from "./mapaDados";
+import { CAMADAS, STATUS_COMBINACAO, camadasDaLegenda, corCondicao, normalizarMapa, padraoInativo, podeCriarPadrao, rotuloVersao } from "./mapaDados";
 import { formatarCnpj, mensagemErro } from "./utils";
 
 function PontoStatus({ status }) {
@@ -37,7 +37,19 @@ function LinhaCombinacao({ empresa, comb, selecionada }) {
     <>
       <PontoStatus status={comb.status} />
       {comb.tipo === "padrao" ? (
-        <span className="cfg-mapa-padrao">{camada?.chave === "fallback" ? CAMADAS.fallback.rotulo : CAMADAS.padrao.rotulo}</span>
+        <>
+          <span className="cfg-mapa-padrao">{camada?.chave === "fallback" ? CAMADAS.fallback.rotulo : CAMADAS.padrao.rotulo}</span>
+          {padraoInativo(comb) && (
+            <Badge cor="vermelho" title="O padrão próprio desta empresa está desativado: as notas caem no fallback geral">
+              Padrão inativo
+            </Badge>
+          )}
+          {comb.modeloCompartilhado && (
+            <Badge cor="amarelo" title="Modelo compartilhado com outras empresas (ex.: fallback geral): editar cria um padrão próprio desta empresa">
+              compartilhado
+            </Badge>
+          )}
+        </>
       ) : (
         <Badge cor={corCondicao(comb.tipo)}>{comb.rotulo}</Badge>
       )}
@@ -78,7 +90,9 @@ function LinhaFallback({ fallback }) {
 }
 
 function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova, fallback }) {
-  const temPadraoProprio = empresa.padrao && !empresa.semMapeamento;
+  // §9.6: `criar_padrao` em acoes_disponiveis = sem padrão próprio (backend antigo: sem_mapeamento).
+  const criarPadrao = podeCriarPadrao(empresa.padrao, empresa.semMapeamento);
+  const temPadraoProprio = empresa.padrao && !criarPadrao;
   return (
     <div className={`cfg-mapa-empresa ${empresa.ativo ? "" : "cfg-inativa"}`}>
       <div className="cfg-mapa-empresa-linha">
@@ -96,7 +110,7 @@ function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova, fallback }) {
         <button
           type="button"
           className="cfg-icon-btn cfg-mapa-empresa-nova"
-          onClick={() => onNova(empresa, empresa.semMapeamento ? "padrao" : "apolice")}
+          onClick={() => onNova(empresa, criarPadrao ? "padrao" : "apolice")}
           disabled={!empresa.ativo}
           title={empresa.ativo ? `Nova configuração — ${empresa.razao_social}` : "Empresa inativa: ative-a em Prestadores antes de mapear"}
           aria-label={`Nova configuração — ${empresa.razao_social}`}
@@ -116,11 +130,27 @@ function NoEmpresa({ empresa, aberta, onAlternar, selecao, onNova, fallback }) {
             />
           ))}
           {temPadraoProprio ? (
-            <LinhaCombinacao
-              empresa={empresa}
-              comb={empresa.padrao}
-              selecionada={selecao.prestadorId === String(empresa.id) && selecao.condicao === empresa.padrao.chave}
-            />
+            <>
+              <LinhaCombinacao
+                empresa={empresa}
+                comb={empresa.padrao}
+                selecionada={selecao.prestadorId === String(empresa.id) && selecao.condicao === empresa.padrao.chave}
+              />
+              {padraoInativo(empresa.padrao) && (
+                <div className="cfg-mapa-vazio">
+                  <FiAlertTriangle /> Padrão próprio
+                  {empresa.padrao.modeloAReativar ? ` (${rotuloVersao(empresa.padrao.modeloAReativar)})` : ""} desativado: as notas caem
+                  no fallback geral.
+                  <Link
+                    className="cfg-link-btn"
+                    to={`/configuracao/mapa/${empresa.id}/${encodeURIComponent(empresa.padrao.chave)}`}
+                    state={{ reativar: true }}
+                  >
+                    Reativar
+                  </Link>
+                </div>
+              )}
+            </>
           ) : (
             <>
               <div className="cfg-mapa-vazio">

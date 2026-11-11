@@ -122,6 +122,51 @@ A tela mostra o **rótulo da camada** e, ao lado, o número interno em cinza peq
   rótulo completo do backend aparece no tooltip. Com backend antigo (sem `camada`), a camada é deduzida pelo tipo da
   condição — publicar o front junto ou depois do backend com a migração `0044_camadas_fixas`.
 
+### Editar o padrão da empresa (contrato §9.6)
+
+A ficha "Padrão" (`/configuracao/mapa/<id>/padrao`) **sempre** oferece um caminho de edição; qual botão aparece vem de
+`acoes_disponiveis` (ficha e `GET mapa/`):
+
+| Situação | O que a tela mostra | O que acontece |
+|---|---|---|
+| Padrão com modelo **só desta empresa** (`acoes_disponiveis: ["clonar_versao"]`) | "Clonar para editar" | clona a versão ativa como rascunho do mesmo código; editar, dry-run, ativar (fluxo de sempre) |
+| Padrão com modelo **compartilhado** (`modelo_compartilhado: true`, `acoes_disponiveis: ["derivar_padrao_proprio"]`; ex.: CONDOCORP no B-1, que também é o fallback geral) | aviso "Hoje esta empresa usa o modelo compartilhado B-1, que também é o fallback geral. Editar cria um modelo só dela; o B-1 continua para as demais." + botão primário **"Criar padrão próprio desta empresa"**; na árvore do Mapa, badge **compartilhado** na linha Padrão | modal com motivo (e código opcional, ex.: B-2) → `POST mapa/{prestador_id}/padrao/derivar/` cria um modelo novo da empresa (rascunho, cópia do compartilhado) → abre o wizard direto no passo **Parâmetros** (campos diferentes do compartilhado destacados) → passo **Ativar** |
+| Empresa **sem padrão próprio** (`sem_mapeamento`, cai no fallback; `acoes_disponiveis: ["criar_padrao"]`) | "Criar padrão da empresa" (o fallback fica só para consulta) | wizard com condição Padrão (`POST mapa/criar/`) |
+| Já existe padrão derivado **em rascunho** (`padrao_derivado_pendente`) | aviso "Há um padrão próprio desta empresa em rascunho" + "Editar / ativar o rascunho"; o rascunho entra no seletor de versões como "padrão próprio, rascunho" | edita (`PATCH modelos/{id}/`), dry-run e ativa (`POST modelos/{id}/ativar/`) na própria ficha; não deriva de novo |
+
+- O rascunho derivado **não emite** até ser ativado. Ao ativar, a regra padrão da empresa é **reapontada** do
+  compartilhado para o modelo novo; o resumo da ativação mostra "Regra padrão reapontada: B-1 → B-2". O compartilhado
+  segue valendo para as demais empresas e como fallback geral.
+- O derivado não tem regra própria: a regra padrão (999) da empresa só troca de modelo na ativação (por isso não cai em
+  `versao_sem_regra_ativa`). "Simular impacto" já considera o reapontamento.
+- Rollback: desativar o modelo novo na ficha (`confirmar: true`): a regra 999 fica no modelo inativo e a empresa passa a
+  cair no **fallback geral** (no caso CONDOCORP, o mesmo B-1 de antes; o mapa volta a mostrar "sem padrão próprio").
+- Erros de `derivar/` (nada gravado): 409 `derivacao_pendente` (o modal oferece "Abrir o rascunho existente"),
+  409 `padrao_nao_compartilhado` (usar "Clonar para editar"), 409 `sem_padrao_proprio` (usar "Criar padrão da
+  empresa"), 400 em `codigo_sugerido` (deixar vazio ou outro código), 400 em `prestador_id` (empresa inativa), 404.
+- Na ficha de modelo compartilhado o botão "Desativar" da versão ativa fica oculto (desativaria o modelo de todas as
+  empresas); a ficha de empresa sem padrão mostra o fallback só para consulta.
+- **Trava `modelo_compartilhado` (409) no ativar**: a ficha e o wizard enviam `prestador_id` em
+  `POST modelos/{id}/ativar/`. Se a versão não tem empresa e o código tem regra de outro dono (fallback, outra empresa,
+  canal), o backend recusa com 409 `modelo_compartilhado`: a tela mostra a mensagem, os donos (`campos.donos`) e o caminho
+  (`campos.acao`), sem "Confirmar mesmo assim"; quando cabe, oferece "Criar padrão próprio desta empresa". Ativar o
+  modelo do fallback (ex.: B-1 v2) só pelo caminho global (sem `prestador_id`), com o time técnico.
+- `modelo_eh_fallback` decide se o aviso diz "que também é o fallback geral".
+- Wizard com condição Padrão em empresa cujo padrão é compartilhado: 409 `condicao_duplicada` com `campos.acao`
+  apontando para `padrao/derivar/` → o passo 1 mostra o botão "Criar padrão próprio desta empresa".
+- **Padrão inativo** (rollback feito: `acoes_disponiveis: ["reativar_padrao"]` + `modelo_a_reativar`): a árvore mostra
+  o badge "Padrão inativo" e o link "Reativar"; a ficha mostra o aviso e "Reativar padrão (B-2)" →
+  `POST modelos/{id}/ativar/` com `prestador_id` (nada é reapontado: a regra 999 já está no B-2). `derivar/` ou
+  `mapa/criar` (padrão) nesse estado → 409 `padrao_inativo` (`campos.modelo_id`): o modal/wizard oferece o mesmo botão.
+- **Vínculo do derivado** (`campos_fixos._padrao_derivado`, só leitura): o editor mostra "Padrão derivado de B-1
+  (regra N)", tira a diretiva do JSON editável (o PATCH a omite e o backend preserva) e trava o campo prestador.
+- **Ativar o derivado**: 409 `derivacao_invalida` (não confirmável; motivos em `campos.derivacao`) → descartar o
+  rascunho e derivar de novo. 409 `origem_desatualizada` (confirmável) → a tela lista as diferenças campo a campo
+  (origem gravada × versão ativa da origem); aplicar no rascunho o que valer e/ou "Ativar mesmo assim"
+  (`confirmar: true`). "Simular impacto" com vínculo inválido → 400 em `campos.ativar_modelos`, exibido no painel.
+- Backend antigo (sem `acoes_disponiveis`): o front mostra "Clonar para editar" quando há padrão próprio e "Criar padrão
+  da empresa" quando não há. Publicar o front junto ou depois do backend com a §9.6.
+
 ### Erros de `POST mapa/criar/` (passo 1 do wizard) e o que fazer
 
 Todo erro aparece no passo (alerta com a mensagem do backend, o código HTTP/`codigo` e, em "Outros erros", as chaves de

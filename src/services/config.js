@@ -52,6 +52,7 @@ export const ENDPOINTS = {
   mapa: `${BASE}/mapa/`,
   mapaCriar: `${BASE}/mapa/criar/`,
   mapaFicha: (prestadorId, condicao) => `${BASE}/mapa/${prestadorId}/${encodeURIComponent(condicao)}/`,
+  mapaDerivarPadrao: (prestadorId) => `${BASE}/mapa/${prestadorId}/padrao/derivar/`,
 };
 
 const dados = (r) => r.data;
@@ -74,9 +75,19 @@ export const configService = {
   obterModelo: (id) => api.get(ENDPOINTS.modelo(id)).then(dados),
   atualizarModelo: (id, campos, motivo) => api.patch(ENDPOINTS.modelo(id), { ...campos, motivo }).then(dados),
   clonarModelo: (id, motivo) => api.post(ENDPOINTS.modeloClonar(id), { motivo }).then(dados),
-  /** 200: envelope + desativadas + diff_regras + simulacao (calculados antes de gravar). */
-  ativarModelo: (id, motivo, confirmar = false) =>
-    api.post(ENDPOINTS.modeloAtivar(id), { motivo, ...(confirmar ? { confirmar: true } : {}) }).then(dados),
+  /**
+   * 200: envelope + desativadas + diff_regras (com `reapontadas`, §9.6) + simulacao (calculados antes de gravar).
+   * `prestadorId` (opcional): ativação pela ficha/wizard de uma empresa — o backend recusa com 409 `modelo_compartilhado`
+   * versão sem prestador cujo código tem regra de outro dono (FALLBACK, outra empresa, transversal). Sem ele = caminho global.
+   */
+  ativarModelo: (id, motivo, confirmar = false, prestadorId = null) =>
+    api
+      .post(ENDPOINTS.modeloAtivar(id), {
+        motivo,
+        ...(confirmar ? { confirmar: true } : {}),
+        ...(prestadorId != null && prestadorId !== "" ? { prestador_id: Number(prestadorId) } : {}),
+      })
+      .then(dados),
   desativarModelo: (id, motivo, confirmar = false) =>
     api.post(ENDPOINTS.modeloDesativar(id), { motivo, ...(confirmar ? { confirmar: true } : {}) }).then(dados),
   /** entrada: { id_integracao } ou { fixture } */
@@ -104,6 +115,15 @@ export const configService = {
   criarMapa: (corpo) => api.post(ENDPOINTS.mapaCriar, corpo).then(dados),
   /** Ficha completa da combinação (modelo ativo por grupos, rascunhos, regra, últimas notas, payload de exemplo). */
   fichaMapa: (prestadorId, condicao) => api.get(ENDPOINTS.mapaFicha(prestadorId, condicao)).then(dados),
+  /**
+   * Padrão próprio da empresa (§9.6): quando o padrão usa um modelo compartilhado (ex.: B-1, também fallback geral),
+   * cria um modelo só da empresa (rascunho, código novo) + regra padrão; ao ativar, a regra padrão é reapontada.
+   * corpo: {motivo, codigo_sugerido?}.
+   */
+  derivarPadraoMapa: (prestadorId, motivo, codigoSugerido = "") =>
+    api
+      .post(ENDPOINTS.mapaDerivarPadrao(prestadorId), { motivo, ...(codigoSugerido ? { codigo_sugerido: codigoSugerido } : {}) })
+      .then(dados),
 
   // Auditoria (paginada). Filtros: entidade (prestador|modelo|regra), entidade_id, acao, usuario, page, page_size.
   listarAuditoria: (filtros = {}) => {

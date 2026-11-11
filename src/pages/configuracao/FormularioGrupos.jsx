@@ -33,6 +33,7 @@ function Grupo({ grupo, aberto, onAlternar, children, qtdAlterados, qtdDestacado
  *  - alterados: Set de nomes alterados (marca o grupo)
  *  - erros: {nome: "msg"}; obrigatorios: Set extra (obrigatórios por provedor)
  *  - destacados: Set de nomes que diferem de uma referência (ex.: modelo base no wizard); marca o campo e o grupo
+ *  - travados: {nome: "explicação"} — campos desabilitados por regra do backend (ex.: prestador do padrão derivado)
  */
 export default function FormularioGrupos({
   grupos = [],
@@ -48,6 +49,7 @@ export default function FormularioGrupos({
   onValidezJson,
   abertosInicial,
   destacados,
+  travados = {},
 }) {
   const visiveis = grupos
     .map((g) => ({ ...g, campos: (g.campos || []).filter((c) => campoDoProvedor(c, provedor)) }))
@@ -103,11 +105,12 @@ export default function FormularioGrupos({
                     onChange={(v) => onChange?.(nome, v)}
                     schema={schema}
                     prestadores={prestadores}
-                    desabilitado={desabilitado || campoSomenteLeitura(c)}
+                    desabilitado={desabilitado || campoSomenteLeitura(c) || !!travados[nome]}
                     erro={erros[nome]}
                     obrigatorio={!!c.obrigatorio || !!obrigatorios?.has(nome)}
                     onValidezJson={onValidezJson}
                   />
+                  {travados[nome] && <small className="cfg-ajuda">{travados[nome]}</small>}
                 </div>
               );
             })}

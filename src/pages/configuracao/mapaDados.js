@@ -205,6 +205,16 @@ export function rotuloVersao(m) {
   return m.codigo || (m.id != null ? `#${m.id}` : "—");
 }
 
+/** Texto explicativo do padrão com modelo compartilhado (§9.6), usado na ficha e no modal "Criar padrão próprio". */
+export function textoPadraoCompartilhado(modelo, { fallback = true } = {}) {
+  const rotulo = modelo?.codigo || rotuloVersao(modelo);
+  return (
+    `Hoje esta empresa usa o modelo compartilhado ${rotulo}` +
+    (fallback ? ", que também é o fallback geral." : ", usado também por outras empresas.") +
+    ` Editar cria um modelo só dela; o ${rotulo} continua para as demais.`
+  );
+}
+
 /**
  * Normaliza uma linha de condição (ou o padrão) de GET mapa/ (§9.2):
  * {chave, tipo, valor, tipo_nfe, outras_condicoes, regra, modelo, modelo_ativo, versoes_rascunho}.
@@ -228,6 +238,18 @@ export function normalizarCombinacao(c, { tipoPadrao = null, semMapeamento = fal
     { camada: c.camada ?? cond?.camada, tipo, regra: c.regra, semMapeamento: sem, fallback: c.fallback },
     prioridades
   );
+  // Padrão próprio (contrato §9.6): o modelo do padrão é compartilhado (ex.: B-1 = fallback geral) e a ação de edição
+  // correta vem do backend. Sem `acoes_disponiveis` (backend antigo), deduz: compartilhado → derivar; senão clonar.
+  const modeloCompartilhado = !!(c.modelo_compartilhado ?? false);
+  // `acoes_disponiveis` (§9.6): clonar_versao | derivar_padrao_proprio | criar_padrao. null = backend antigo.
+  const acoesDisponiveis = Array.isArray(c.acoes_disponiveis) ? c.acoes_disponiveis : null;
+  // O modelo exibido é o alvo da regra FALLBACK ativa (§9.6, `modelo_eh_fallback`); null = backend antigo.
+  const modeloEhFallback = c.modelo_eh_fallback ?? null;
+  // Rascunho derivado ainda não ativado (§9.6: só em `padrao`): {id, codigo, versao, nome}. Não tem regra própria
+  // (a regra padrão é reapontada na ativação), por isso não vem em `rascunhos`.
+  const derivadoPendente = versaoCurta(c.padrao_derivado_pendente ?? null);
+  // Padrão existe com modelo INATIVO (rollback do padrão próprio; `acoes_disponiveis = ["reativar_padrao"]`).
+  const modeloAReativar = versaoCurta(c.modelo_a_reativar ?? null);
   return {
     chave: cond?.chave ?? c.chave ?? chaveCondicao(tipo, valor),
     tipo,
@@ -241,7 +263,24 @@ export function normalizarCombinacao(c, { tipoPadrao = null, semMapeamento = fal
     semMapeamento: sem,
     camada,
     status,
+    modeloCompartilhado,
+    acoesDisponiveis,
+    modeloEhFallback,
+    derivadoPendente,
+    modeloAReativar,
   };
+}
+
+/**
+ * A empresa pode "Criar padrão da empresa" (mapa/criar com condição padrao)? §9.6: `criar_padrao` em
+ * `acoes_disponiveis` do padrão; backend antigo (sem a lista) → deduz por `sem_mapeamento`.
+ */
+/** Padrão com modelo inativo que pode ser reativado (§9.6, `reativar_padrao`)? */
+export const padraoInativo = (padrao) => !!padrao?.acoesDisponiveis?.includes("reativar_padrao");
+
+export function podeCriarPadrao(padrao, semMapeamento = false) {
+  if (Array.isArray(padrao?.acoesDisponiveis)) return padrao.acoesDisponiveis.includes("criar_padrao");
+  return !!(semMapeamento || padrao?.semMapeamento);
 }
 
 /**
@@ -333,7 +372,21 @@ export function valoresDoModelo(modelo, campos, valoresFicha = {}) {
   });
   if (!("hooks" in v)) v.hooks = modelo?.hooks ?? [];
   if (!("campos_fixos_extras" in v) && modelo && "campos_fixos_extras" in modelo) v.campos_fixos_extras = modelo.campos_fixos_extras;
+  // `_padrao_derivado` (§9.6) é gerenciado pelo sistema: fora do JSON editável (omitir no PATCH preserva a diretiva).
+  if (v.campos_fixos_extras && typeof v.campos_fixos_extras === "object" && DIRETIVA_DERIVADO in v.campos_fixos_extras) {
+    const { [DIRETIVA_DERIVADO]: _ignorada, ...resto } = v.campos_fixos_extras;
+    v.campos_fixos_extras = resto;
+  }
   return v;
+}
+
+/** Diretiva só leitura do padrão derivado (§9.6): `campos_fixos._padrao_derivado`. */
+export const DIRETIVA_DERIVADO = "_padrao_derivado";
+
+/** Diretiva `_padrao_derivado` do modelo (§4.2: em `campos_fixos` e em `campos_fixos_extras`), ou null. */
+export function diretivaDerivado(modelo) {
+  const d = modelo?.campos_fixos?.[DIRETIVA_DERIVADO] ?? modelo?.campos_fixos_extras?.[DIRETIVA_DERIVADO] ?? null;
+  return d && typeof d === "object" ? d : null;
 }
 
 /** Normaliza o valor da apólice como o backend grava: maiúsculas, sem espaços. */

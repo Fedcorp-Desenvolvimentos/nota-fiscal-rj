@@ -2,14 +2,16 @@
 // Usado pela ficha do Mapa de emissão e pelo passo 2 do wizard "Nova configuração".
 // Versão ativa = só leitura (mudança = clonar). `referencia` (opcional) destaca os campos que diferem dela
 // (no wizard: o modelo base do rascunho recém-criado).
+// Padrão derivado (§9.6): `campos_fixos._padrao_derivado` é só leitura — aparece como bloco informativo, fica fora do
+// JSON editável (omitir no PATCH preserva) e trava o campo prestador (trocar → 400 no backend).
 import { useEffect, useMemo, useState } from "react";
 import { useSnackbar } from "notistack";
-import { FiLock, FiSave } from "react-icons/fi";
+import { FiLink, FiLock, FiSave } from "react-icons/fi";
 import { configService } from "../../services/config";
 import { CampoMotivo, ErrosBackend } from "./componentes";
 import CampoModelo from "./CampoModelo";
 import FormularioGrupos from "./FormularioGrupos";
-import { camposDosGrupos, campoSomenteLeitura, iguais, nomeCampo, valoresDoModelo } from "./mapaDados";
+import { camposDosGrupos, campoSomenteLeitura, diretivaDerivado, iguais, nomeCampo, valoresDoModelo } from "./mapaDados";
 import { errosDeCampo, mensagemErro, notificarEscrita, validarMotivo } from "./utils";
 
 // Campos que sempre diferem do modelo base num rascunho do mapa (identidade), fora do destaque.
@@ -41,7 +43,19 @@ export default function EditorParametros({ modelo, schema, prestadores, valoresF
     setErroSalvar(null);
   }, [original]);
 
-  const somenteLeitura = useMemo(() => new Set(campos.filter(campoSomenteLeitura).map(nomeCampo)), [campos]);
+  const derivado = useMemo(() => diretivaDerivado(modelo), [modelo]);
+  const travados = useMemo(
+    () =>
+      derivado
+        ? { prestador: "Padrão derivado: a empresa é fixa (ligada à regra padrão que será reapontada na ativação)." }
+        : {},
+    [derivado]
+  );
+  const somenteLeitura = useMemo(() => {
+    const s = new Set(campos.filter(campoSomenteLeitura).map(nomeCampo));
+    Object.keys(travados).forEach((k) => s.add(k));
+    return s;
+  }, [campos, travados]);
   const nomesConhecidos = useMemo(() => [...campos.map(nomeCampo), "hooks", "campos_fixos_extras", "motivo"], [campos]);
 
   // Só campos editáveis entram no PATCH (prestador/derivado nunca).
@@ -131,6 +145,21 @@ export default function EditorParametros({ modelo, schema, prestadores, valoresF
           </span>
         </div>
       )}
+      {derivado && (
+        <div className="cfg-aviso">
+          <FiLink />
+          <span>
+            <strong>
+              Padrão derivado de {derivado.codigo_origem || "?"}
+              {derivado.regra_id != null ? ` (regra ${derivado.regra_id})` : ""}
+            </strong>
+            . Ao ativar este rascunho, a regra padrão da empresa passa a apontar para ele; o {derivado.codigo_origem || "modelo de origem"}{" "}
+            continua para as demais empresas. Vínculo gerenciado pelo sistema (só leitura)
+            {derivado.modelo_origem_id != null ? ` · origem #${derivado.modelo_origem_id}` : ""}
+            {derivado.criado_em ? ` · criado em ${String(derivado.criado_em).slice(0, 16).replace("T", " ")}` : ""}.
+          </span>
+        </div>
+      )}
       <ErrosBackend erro={erroSalvar} conhecidos={nomesConhecidos} padrao="Falha ao salvar o rascunho." />
 
       {grupos.length ? (
@@ -148,6 +177,7 @@ export default function EditorParametros({ modelo, schema, prestadores, valoresF
           destacados={destacados}
           provedor={form.provedor}
           onValidezJson={setJsonValido}
+          travados={travados}
         />
       ) : (
         <div className="cfg-aviso cfg-aviso-alerta">

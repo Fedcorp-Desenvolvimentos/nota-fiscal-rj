@@ -5,10 +5,13 @@
 //                   diferem do modelo base em destaque.
 //   3. Ativar    → resumo, "Simular impacto" (regras/simular/ com ativar_modelos=[id]), "Ativar agora" (travas +
 //                   ResumoAtivacao) ou "Deixar como rascunho". Ao terminar, abre a ficha da combinação.
+// Padrão próprio (§9.6): a ficha "Padrão" com modelo compartilhado chama POST mapa/{id}/padrao/derivar/ e abre este
+// wizard já no passo 2, com `location.state.derivado = {modelo, regra (a reapontar), condicao, base_modelo_id,
+// reapontamento}` (o passo 1 não roda). O derivado não tem regra própria: na ativação o backend reaponta a regra padrão.
 // Camadas fixas (10/11/2026): não há campo de prioridade; a camada vem do tipo da condição (apólice → Apólice,
 // padrão → Padrão da empresa, canal → Canal) e o backend escolhe a prioridade. O número aparece só em cinza.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { useSnackbar } from "notistack";
 import { FiArrowLeft, FiArrowRight, FiCheckCircle, FiLayers, FiPlay, FiSave } from "react-icons/fi";
 import { configService } from "../../services/config";
@@ -18,7 +21,8 @@ import SimularImpacto from "./SimularImpacto";
 import EditorParametros from "./EditorParametros";
 import AcaoModeloModal from "./AcaoModeloModal";
 import { agruparModelos } from "./modelosDados";
-import { CANAIS, camadaDe, chaveCondicao, normalizarApolice, opcoesModeloBase, rotuloCondicao, rotuloVersao } from "./mapaDados";
+import { CANAIS, camadaDe, chaveCondicao, normalizarApolice, opcoesModeloBase, podeCriarPadrao, rotuloCondicao, rotuloVersao } from "./mapaDados";
+import DerivarPadraoModal from "./DerivarPadraoModal";
 import {
   MENSAGEM_CONFLITO_CONDICAO,
   codigoErro,
@@ -75,6 +79,7 @@ function basePadrao(empresa, opcoes) {
 
 export default function NovaConfiguracaoWizard() {
   const [params] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const ctx = useOutletContext() || {};
@@ -107,11 +112,16 @@ export default function NovaConfiguracaoWizard() {
   const [ativado, setAtivado] = useState(false);
 
   const empresa = empresas.find((e) => String(e.id) === String(empresaId)) || null;
+  const criarPadraoPermitido = podeCriarPadrao(empresa?.padrao, empresa?.semMapeamento);
+  const [derivando, setDerivando] = useState(false);
+  const [reativar, setReativar] = useState(null); // 409 padrao_inativo → reativar o padrão próprio desativado
   const opcoes = useMemo(() => opcoesModeloBase(grupos, empresa), [grupos, empresa]);
   const padraoBase = basePadrao(empresa, opcoes);
 
-  // Parâmetros da URL mudaram (outro "+ Nova configuração"): recomeça o wizard.
+  // Parâmetros da URL mudaram (outro "+ Nova configuração"): recomeça o wizard. Com `state.derivado` (padrão próprio
+  // criado pela ficha, §9.6), o rascunho já existe: entra direto no passo 2 comparando com o modelo compartilhado.
   const consulta = params.toString();
+  const derivado = location.state?.derivado || null;
   useEffect(() => {
     const q = new URLSearchParams(consulta);
     setEmpresaId(q.get("prestador") || "");
@@ -119,12 +129,36 @@ export default function NovaConfiguracaoWizard() {
     setPasso(0);
     setCriado(null);
     setRascunho(null);
+    setBase(null);
     setAtivado(false);
     setValor("");
     setMotivo("");
     setCodigo("");
     setErroCriar(null);
-  }, [consulta]);
+    if (!derivado?.modelo) return;
+    setCriado({
+      modelo: derivado.modelo,
+      regra: derivado.regra || null,
+      condicao: derivado.condicao || { chave: "padrao", tipo: "padrao", valor: null },
+      derivado: true,
+      reapontamento: derivado.reapontamento || "",
+      regraReapontar: derivado.regra_a_reapontar || derivado.regra || null,
+    });
+    if (derivado.modelo.id && derivado.modelo.provedor) setRascunho(derivado.modelo);
+    else if (derivado.modelo.id)
+      configService
+        .obterModelo(derivado.modelo.id)
+        .then(setRascunho)
+        .catch((err) => enqueueSnackbar(mensagemErro(err, "Rascunho criado, mas falhou ao carregá-lo: abra pela ficha."), { variant: "error" }));
+    if (derivado.base_modelo_id != null)
+      configService
+        .obterModelo(Number(derivado.base_modelo_id))
+        .then(setBase)
+        .catch((err) => enqueueSnackbar(mensagemErro(err, "Não foi possível carregar o modelo compartilhado para comparar."), { variant: "warning" }));
+    setPasso(1);
+    // `location.key` muda a cada navegação: um novo "derivar" com a mesma URL também recomeça.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consulta, location.key]);
 
   const carregarModelos = useCallback(async () => {
     setCarregandoModelos(true);
@@ -150,10 +184,10 @@ export default function NovaConfiguracaoWizard() {
   // Empresa trocada: tipo coerente (padrão só para empresa sem mapeamento), valor e base padrão.
   useEffect(() => {
     if (criado) return;
-    setTipo((t) => (t === "padrao" && empresa && !empresa.semMapeamento ? "apolice" : t));
+    setTipo((t) => (t === "padrao" && empresa && !criarPadraoPermitido ? "apolice" : t));
     setErrosCampo({});
     setErroCriar(null);
-  }, [empresa, criado]);
+  }, [empresa, criado, criarPadraoPermitido]);
   useEffect(() => {
     if (!criado) setBaseId(padraoBase ?? "");
   }, [padraoBase, criado]);
@@ -161,7 +195,7 @@ export default function NovaConfiguracaoWizard() {
   const tiposDisponiveis = [
     { valor: "apolice", rotulo: "Apólice" },
     { valor: "tipo_nfe", rotulo: "Canal (VR / externo)" },
-    ...(empresa?.semMapeamento ? [{ valor: "padrao", rotulo: "Padrão da empresa" }] : []),
+    ...(criarPadraoPermitido ? [{ valor: "padrao", rotulo: "Padrão da empresa" }] : []),
   ];
 
   const valorEnviado = tipo === "apolice" ? normalizarApolice(valor) : tipo === "tipo_nfe" ? valor || CANAIS[0].valor : null;
@@ -227,6 +261,34 @@ export default function NovaConfiguracaoWizard() {
   // 409 conflito_condicao (alias conflito_prioridade) é da ativação; aqui só por garantia, com texto próprio.
   const conflitoCondicao = ehConflitoCondicao(erroCriar);
   const duplicada = !conflitoCondicao && (codigoErro(erroCriar) === "condicao_duplicada" || erroCriar?.response?.status === 409);
+  // §9.6: padrão compartilhado → 409 condicao_duplicada com campos.acao apontando para padrao/derivar/.
+  const acaoDuplicada = erroCriar?.response?.data?.erro?.campos?.acao;
+  const sugereDerivar = duplicada && typeof acaoDuplicada === "string" && /padrao\/derivar/.test(acaoDuplicada);
+  // §9.6: padrão próprio existe mas está desativado → 409 padrao_inativo com campos.modelo_id: reativar, não recriar.
+  const idInativo = codigoErro(erroCriar) === "padrao_inativo" ? (erroCriar?.response?.data?.erro?.campos?.modelo_id ?? null) : null;
+  const abrirReativar = (modeloId) => {
+    setDerivando(false);
+    const conhecido = empresa?.padrao?.modeloAReativar;
+    setReativar(conhecido && String(conhecido.id) === String(modeloId) ? conhecido : { id: Number(modeloId) });
+  };
+  // Rascunho derivado (aqui ou na ficha): recomeça o wizard no passo 2 com o novo rascunho (efeito de `location.key`).
+  const abrirDerivado = (resp) => {
+    setDerivando(false);
+    const obj = resp?.objeto || {};
+    ctx.recarregarMapa?.();
+    navigate(`/configuracao/mapa/nova?prestador=${empresa?.id ?? empresaId}&tipo=padrao`, {
+      state: {
+        derivado: {
+          modelo: obj.modelo,
+          regra: obj.regra || obj.regra_a_reapontar || null,
+          condicao: obj.condicao || { chave: "padrao", tipo: "padrao", valor: null },
+          base_modelo_id: obj.modelo_origem?.id ?? null,
+          reapontamento: obj.reapontamento || "",
+          regra_a_reapontar: obj.regra_a_reapontar || null,
+        },
+      },
+    });
+  };
 
   const irParaFicha = () => {
     const pid = empresa?.id ?? empresaId;
@@ -285,7 +347,28 @@ export default function NovaConfiguracaoWizard() {
 
               <ErrosBackend erro={erroCriar} conhecidos={conhecidosCriar} padrao="Falha ao criar a configuração.">
                 {conflitoCondicao && <div style={{ marginTop: 4 }}>{MENSAGEM_CONFLITO_CONDICAO}</div>}
-                {duplicada && chaveFicha && (
+                {idInativo != null && (
+                  <div style={{ marginTop: 4 }}>
+                    O padrão próprio desta empresa existe, mas está desativado (as notas caem no fallback geral): reative-o em vez de
+                    criar outro.{" "}
+                    <button type="button" className="cfg-btn cfg-btn-sucesso cfg-btn-sm" onClick={() => abrirReativar(idInativo)}>
+                      Reativar padrão
+                      {empresa?.padrao?.modeloAReativar && String(empresa.padrao.modeloAReativar.id) === String(idInativo)
+                        ? ` (${rotuloVersao(empresa.padrao.modeloAReativar)})`
+                        : ""}
+                    </button>
+                  </div>
+                )}
+                {sugereDerivar && (
+                  <div style={{ marginTop: 4 }}>
+                    O padrão desta empresa usa um modelo compartilhado (com outras empresas ou o fallback geral). Para editar só o
+                    desta empresa, crie um padrão próprio.{" "}
+                    <button type="button" className="cfg-btn cfg-btn-primario cfg-btn-sm" onClick={() => setDerivando(true)}>
+                      Criar padrão próprio desta empresa
+                    </button>
+                  </div>
+                )}
+                {duplicada && !sugereDerivar && idInativo == null && chaveFicha && (
                   <div style={{ marginTop: 4 }}>
                     Esta condição já tem modelo/regra para a empresa: edite o rascunho existente ou clone a versão ativa na ficha.{" "}
                     <Link to={`/configuracao/mapa/${empresa?.id}/${encodeURIComponent(chaveFicha)}`}>Abrir a ficha existente</Link>
@@ -489,7 +572,21 @@ export default function NovaConfiguracaoWizard() {
               <tr>
                 <th>Camada</th>
                 <td>
-                  {criado?.regra ? (
+                  {criado?.derivado ? (
+                    <>
+                      <strong>
+                        <RotuloCamada camada={camadaCriada} />
+                      </strong>{" "}
+                      {criado.regraReapontar?.id != null && <span className="cfg-mono">· regra {criado.regraReapontar.id} </span>}
+                      {criado.regraReapontar?.condicoes && <span className="cfg-mono">· {criado.regraReapontar.condicoes} </span>}
+                      {ativado ? (
+                        <Badge cor="verde">reapontada para {rotuloVersao(rascunho)}</Badge>
+                      ) : (
+                        <Badge cor="amarelo">hoje → {base ? rotuloVersao(base) : "modelo compartilhado"}; reapontada ao ativar</Badge>
+                      )}
+                      {criado.reapontamento && <div className="cfg-ajuda">{criado.reapontamento}</div>}
+                    </>
+                  ) : criado?.regra ? (
                     <>
                       <strong>
                         <RotuloCamada camada={camadaCriada} />
@@ -510,7 +607,7 @@ export default function NovaConfiguracaoWizard() {
                 </td>
               </tr>
               <tr>
-                <th>Modelo base</th>
+                <th>{criado?.derivado ? "Derivado de" : "Modelo base"}</th>
                 <td>{base ? rotuloVersao(base) : "—"}</td>
               </tr>
             </tbody>
@@ -537,6 +634,11 @@ export default function NovaConfiguracaoWizard() {
       <AcaoModeloModal
         acao={acao}
         modelo={rascunho}
+        prestadorId={empresa?.id ?? (empresaId || null)}
+        onDerivar={() => {
+          setAcao(null);
+          setDerivando(true);
+        }}
         onFechar={() => setAcao(null)}
         onConcluido={() => {
           setAcao(null);
@@ -544,6 +646,31 @@ export default function NovaConfiguracaoWizard() {
           ctx.recarregarMapa?.();
         }}
         onResumoFechado={irParaFicha}
+      />
+      <DerivarPadraoModal
+        aberto={derivando}
+        prestadorId={empresa?.id ?? empresaId}
+        nomeEmpresa={empresa?.razao_social}
+        modelo={empresa?.padrao?.modeloAtivo || empresa?.padrao?.modelo}
+        fallback={empresa?.padrao?.modeloEhFallback ?? true}
+        onFechar={() => setDerivando(false)}
+        onConcluido={abrirDerivado}
+        onAbrirPendente={(id) => {
+          setDerivando(false);
+          navigate(`/configuracao/mapa/${empresa?.id ?? empresaId}/padrao`, { state: { rascunhoId: id } });
+        }}
+        onReativar={abrirReativar}
+      />
+      <AcaoModeloModal
+        acao={reativar ? "ativar" : null}
+        modelo={reativar}
+        prestadorId={empresa?.id ?? (empresaId || null)}
+        onFechar={() => setReativar(null)}
+        onConcluido={() => {
+          setReativar(null);
+          ctx.recarregarMapa?.();
+        }}
+        onResumoFechado={() => navigate(`/configuracao/mapa/${empresa?.id ?? empresaId}/padrao`)}
       />
     </div>
   );

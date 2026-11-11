@@ -1,6 +1,8 @@
 // Resumo pós-ativação (resposta 200 de POST modelos/{id}/ativar/): versões desativadas, diff de regras
 // (calculado contra o estado anterior) e simulação nas últimas 200 notas.
 // Camadas fixas (10/11/2026): cada regra aparece pela camada ("Apólice", "Padrão da empresa"...) com o número em cinza.
+// Padrão próprio (§9.6): ao ativar o modelo derivado, a regra padrão da empresa é REAPONTADA do compartilhado (ex.: B-1)
+// para o novo (ex.: B-2); o diff traz isso em `diff_regras.reapontadas` e a tela mostra "regra X: B-1 → B-2".
 import { Badge, Modal, RotuloCamada } from "./componentes";
 import { camadaDe } from "./mapaDados";
 
@@ -16,6 +18,16 @@ function RotuloRegra({ r }) {
 }
 const valor = (v) => (v === null || v === undefined || v === "" ? "∅" : String(v));
 
+/** Rótulo de um modelo do reapontamento: objeto {codigo, versao} ou texto. */
+const rotuloModelo = (m) => (m && typeof m === "object" ? (m.codigo ? `${m.codigo}${m.versao != null ? ` v${m.versao}` : ""}` : `#${m.id}`) : valor(m));
+
+/** Reapontamentos de regra (lista; aceita objeto único e nomes alternativos por tolerância ao contrato). */
+function listaReapontadas(resumo, diff) {
+  const bruto = diff.reapontadas ?? diff.reapontada ?? resumo.reapontadas ?? resumo.regra_padrao_reapontada ?? null;
+  if (!bruto) return [];
+  return Array.isArray(bruto) ? bruto : [bruto];
+}
+
 export default function ResumoAtivacao({ resumo, onFechar }) {
   if (!resumo) return null;
   const diff = resumo.diff_regras || {};
@@ -24,6 +36,7 @@ export default function ResumoAtivacao({ resumo, onFechar }) {
   const removidas = diff.removidas || [];
   const alteradas = diff.alteradas || [];
   const desativadas = resumo.desativadas || [];
+  const reapontadas = listaReapontadas(resumo, diff);
 
   return (
     <Modal
@@ -105,6 +118,27 @@ export default function ResumoAtivacao({ resumo, onFechar }) {
               </tbody>
             </table>
           </div>
+        )}
+
+        {reapontadas.length > 0 && (
+          <>
+            <h4>Regra padrão reapontada</h4>
+            <ul className="cfg-lista-detalhes">
+              {reapontadas.map((r, i) => (
+                <li key={`p${r.id ?? r.regra_id ?? i}`}>
+                  <RotuloCamada camada={camadaRegra({ camada: "padrao", ...r })} />
+                  {r.id ?? r.regra_id ? ` (regra ${r.id ?? r.regra_id})` : ""}:{" "}
+                  <strong className="cfg-mono">{rotuloModelo(r.modelo_anterior ?? r.de ?? r.antes)}</strong> →{" "}
+                  <strong className="cfg-mono">{rotuloModelo(r.modelo_novo ?? r.para ?? r.depois)}</strong>
+                  {r.condicoes ? <span className="cfg-mono"> · {r.condicoes}</span> : null}
+                </li>
+              ))}
+            </ul>
+            <small className="cfg-ajuda">
+              O padrão desta empresa passou a usar o modelo próprio; o modelo compartilhado continua valendo para as demais empresas
+              (e como fallback geral). Rollback: desativar o modelo novo.
+            </small>
+          </>
         )}
 
         <h4>Simulação nas últimas notas</h4>
