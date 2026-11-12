@@ -453,7 +453,7 @@ export default function EmissaoPorFatura() {
                         onChange={(e) => handleTrocarCodigo(e.target.value)}
                         disabled={loadingGerar || loadingEmitir}
                       >
-                        <option value="2119">02119</option>
+                        <option value="04197">04197</option>
                         <option value="3093">03093</option>
                       </select>
                     ) : (
